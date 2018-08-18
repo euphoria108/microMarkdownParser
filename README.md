@@ -1,1 +1,4 @@
 # microMarkdownParser
+
+このプログラムではmarkdownを構文解析してHTMLファイルに変換するよ。
+最低でも構文解析の機能は実装するよ。
