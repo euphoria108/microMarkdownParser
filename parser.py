@@ -10,7 +10,7 @@ block_rules[table] = re.compile(r'''
     \|               #symbol that distinguishes this block is a table           
     (.*)
 ''', re.VERBOSE)
-block_rules[blockQuote] = re. compile(r"""
+block_rules[blockQuote] = re.compile(r"""
     (&gt;|\>)        #symbol that distinguishes this line is a start of blockquote
     (.*)
 """, re.VERBOSE)
@@ -183,6 +183,29 @@ class baseObject:
                     self.appendParsedObj(instance)
                     #行末にインデックスを移動
                     i = re.compile(r'.*').search(rawdata).end()
+                    previous_line_type = 'Blank'
+                    return
+
+            elif previous_line_type == blockQuote:
+                if block_rules[blockQuote].match(rawdata, i):
+                    #行頭の>を取り除く動作は個別クラスで実装する
+                    start_matched = block_rules[blockQuote].match(rawdata, i).start()
+                    end_matched = block_rules[blockQuote].match(rawdata, i).end()
+                    instance.appendRawData(rawdata[start_matched:end_matched])
+                    i = end_matched
+                    return
+                if blank_line.match(rawdata, i):
+                    #空行でブロックの終わりを検知する
+                    self.appendParsedObj(instance)
+                    #行末にインデックスを移動
+                    i = re.compile(r'.*').search(rawdata).end()
+                    previous_line_type = 'Blank'
+                    return
+                else:
+                    j = re.compile(r'.*').search(rawdata).end()
+                    instance.appendRawData(rawdata[i:j])
+                    i = j
+                    return
 
         while i < len(rawdata):
             ##ブロック要素についての処理
@@ -197,6 +220,9 @@ class baseObject:
             #以下、前の行がそれぞれのブロック要素のときについて実装する。
             if previous_line_type == table:
                 matchBlockElements(table)
+
+            if previous_line_type == blockQuote:
+                matchBlockElements(blockQuote)
 
             
 
