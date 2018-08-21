@@ -3,6 +3,7 @@ import warnings
 from collections import OrderedDict
 
 #正規表現定義エリア
+#ブロック要素
 block_rules = OrderedDict()
 block_rules[table] = re.compile(r'''
     ^(.*)           
@@ -17,10 +18,6 @@ block_rules[taggedBlock] = re.compile(r"""
     ^(\<p\>)         #start tag
     (.*)
     (\<\/p\>)$       #end tag
-""", re.VERBOSE)
-block_rules[headers] = re.compile(r"""
-    (\#+)            #header symbol
-    (.*)
 """, re.VERBOSE)
 block_rules[links] = re.compile(r"""
     \[
@@ -53,16 +50,7 @@ block_rules[definitionBlock] = re.compile(r"""
     (.*)
 """, re.VERBOSE)
 
-blank_line = re.compile(r"""
-    \s*\n$
-""",　re.VERBOSE)
-header_line = re.compile(r"""
-    ^((\-){3,}|
-    (\*){3,}|
-    (\=){3,})
-    /s*$
-""",　re.VERBOSE)
-
+#インライン要素
 inline_rules = OrderedDict()
 inline_rules[lineBreak] = re.compile(r'\s{2,}\n')
 inline_rules[boldFont] = re.compile(r"""
@@ -81,6 +69,20 @@ inline_rules[inlineCode] = re.compile(r"""
     `(.*?)`
 """, re.VERBOSE)
 
+#その他個別ルール
+blank_line = re.compile(r"""
+    \s*\n$
+""",　re.VERBOSE)
+header_line = re.compile(r"""
+    ^((\-){3,}|
+    (\*){3,}|
+    (\=){3,})
+    /s*$
+""",　re.VERBOSE)
+header_block = re.compile(r"""
+    (\#+)            #header symbol
+    (.*)
+""", re.VERBOSE)
 
 
 class MarkdownParser:
@@ -109,7 +111,11 @@ class baseObject:
         'parse済のデータを格納すると同時にparse関数を呼びます。'
         obj.parse()
         self.parsed_data.append(obj)
-        
+
+    def appendParsedText(self, text):
+        #この関数を呼ぶ前に、追加されるテキストはインライン要素がパース済みであることが望ましい。
+        text.parse()
+        self.parsed_data.append(text)
 
     def parse(self, parse=True):
         if not parse:
@@ -119,9 +125,8 @@ class baseObject:
         rawdata = self.rawdata
         text_buffer = ""
         previous_line_type = 'Blank'
-        while i < len(rawdata):
-            #前の行の要素が空行の場合、または文頭の場合:
-            if previous_line_type = 'Blank':
+        def matchBlockElements(previous_line_type):
+            if previous_line_type == "blank":
                 #block要素のルールに合致するかを判断する。
                 for rule in block_rules.keys():
                     if rule.match(rawdata, i):
@@ -131,7 +136,16 @@ class baseObject:
                         #次の行の処理のために、現在の行の種類を保存する
                         previous_line_type = rule
                         i = end_matched
-                        break 
+                        return 
+                #header要素に合致するかを判断する。
+                if header_block.match(rawdata, i):
+                    start_matched = header_block.match(rawdata,i).start()
+                    end_matched = header_block.match(rawdata,i).end()
+                    instance = headers(rawdata[start_matched:end_matched])
+                    self.appendParsedObj(instance)
+                    i = end_matched
+                    previous_line_type = "Blank"
+                    return
                 #block要素のいずれにも合致しなかった場合
                 if not blank_line.match(rawdata, i):
                     #行末のインデックスをjに代入
@@ -139,21 +153,50 @@ class baseObject:
                     text_buffer += rawdata[i:j]
                     previous_line_type = "Normal"
                     i = j
-
-            if previous_line_type == 'Normal':
+                    return
+            elif previous_line_type == 'Normal':
+                #次の文が---等だった場合、前の要素がh1ヘッダになる
                 if header_line.match(rawdata, i):
-                    instance = header(text_buffer)
+                    instance = headers(text_buffer,1)
+                    previous_line_type = 'Blank'
+                    return
+                if blank_line.match(rawdata, i):
+                    self.appendParsedText(text_buffer)
+                    i = re.compile(r'.*').search(rawdata).end()
+                    previous_line_type = 'Blank'
+                    return
+                else:
+                    #行末のインデックスをjに代入
+                    j = re.compile(r'.*').search(rawdata).end()
+                    text_buffer += rawdata[i:j]
+                    i = j
+                    return
 
-            if previous_line_type == table:
+            elif previous_line_type == table:
                 if block_rules[table].match(rawdata, i):
                     start_matched = block_rules[table].match(rawdata, i).start()
                     end_matched = block_rules[table].match(rawdata, i).end()
                     instance.appendRawData(rawdata[start_matched:end_matched])
                     i = end_matched
+                    return
                 if blank_line.match(rawdata, i):
                     self.appendParsedObj(instance)
                     #行末にインデックスを移動
                     i = re.compile(r'.*').search(rawdata).end()
+
+        while i < len(rawdata):
+            ##ブロック要素についての処理
+            #前の行の要素が空行の場合、または文頭の場合:
+            if previous_line_type = 'Blank':
+                matchBlockElements('Blank')
+
+            #前の行の要素が通常文だった場合
+            if previous_line_type == 'Normal':
+                matchBlockElements('Normal')
+
+            #以下、前の行がそれぞれのブロック要素のときについて実装する。
+            if previous_line_type == table:
+                matchBlockElements(table)
 
             
 
