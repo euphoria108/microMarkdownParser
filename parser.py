@@ -7,11 +7,11 @@ from collections import OrderedDict
 block_rules = OrderedDict()
 block_rules[table] = re.compile(r'''
     ^(.*)           
-    \|               #symbol that distinguishes this block is a table           
+    \|               #symbol that tells this block is a table           
     (.*)
 ''', re.VERBOSE)
 block_rules[blockQuote] = re.compile(r"""
-    (&gt;|\>)        #symbol that distinguishes this line is a start of blockquote
+    (&gt;|\>)        #symbol that tells this line is a start of blockquote
     (.*)
 """, re.VERBOSE)
 block_rules[taggedBlock] = re.compile(r"""
@@ -71,7 +71,7 @@ inline_rules[inlineCode] = re.compile(r"""
 
 #その他個別ルール
 blank_line = re.compile(r"""
-    \s*\n$
+    \s*\n
 """,　re.VERBOSE)
 header_line = re.compile(r"""
     ^((\-){3,}|
@@ -96,64 +96,24 @@ class MarkdownParser:
         pass
 
 class baseObject:
-    def __init__(self, rawdata):
-        self.rawdata = rawdata
-        self.parsed_data = []
-        reset()
+    # def __init__(self, listed_data):
+    #     self.rawdata = listed_data
+    #     self.parsed_data = []
+    #     self.text_buffer = []
+    #     reset()
 
     def reset(self):
-        self.start_pos = 0
+        self.start_index = 0
 
-    def appendRawData(self, data):
-        self.rawdata += data
-
-    def appendParsedObj(self, obj):
-        'parse済のデータを格納すると同時にparse関数を呼びます。'
-        obj.parse()
-        self.parsed_data.append(obj)
-
-    def appendParsedText(self, text):
-        #この関数を呼ぶ前に、追加されるテキストはインライン要素がパース済みであることが望ましい。
-        text.parse()
-        self.parsed_data.append(text)
-
-    def parse(self, parse=True):
-        if not parse:
+    def parse(self):
+        if len(self.rawdata) == 0:
             return
-        
-        i = self.start_pos
-        rawdata = self.rawdata
-        text_buffer = ""
-        previous_line_type = 'Blank'
-        def matchBlockElements(previous_line_type):
+
+        i = self.start_index
+        text_buffer = []
+        # if previous_line_type = 'Blank'
             if previous_line_type == "blank":
-                #block要素のルールに合致するかを判断する。
-                for rule in block_rules.keys():
-                    if rule.match(rawdata, i):
-                        start_matched = rule.match(rawdata,i).start()
-                        end_matched = rule.match(rawdata,i).end()
-                        instance = rule(rawdata[start_matched:end_matched])
-                        #次の行の処理のために、現在の行の種類を保存する
-                        previous_line_type = rule
-                        i = end_matched
-                        return 
-                #header要素に合致するかを判断する。
-                if header_block.match(rawdata, i):
-                    start_matched = header_block.match(rawdata,i).start()
-                    end_matched = header_block.match(rawdata,i).end()
-                    instance = headers(rawdata[start_matched:end_matched])
-                    self.appendParsedObj(instance)
-                    i = end_matched
-                    previous_line_type = "Blank"
-                    return
-                #block要素のいずれにも合致しなかった場合
-                if not blank_line.match(rawdata, i):
-                    #行末のインデックスをjに代入
-                    j = re.compile(r'.*').search(rawdata).end()
-                    text_buffer += rawdata[i:j]
-                    previous_line_type = "Normal"
-                    i = j
-                    return
+                
             elif previous_line_type == 'Normal':
                 #次の文が---等だった場合、前の要素がh1ヘッダになる
                 if header_line.match(rawdata, i):
@@ -224,7 +184,34 @@ class baseObject:
             if previous_line_type == blockQuote:
                 matchBlockElements(blockQuote)
 
-            
+    def parseFirstTime(self, listed_data, start_index):
+        #block要素のルールに合致するかを判断する。
+        for rule in self.block_rules.keys():
+            if rule.match(rawdata, i):
+                start_matched = rule.match(rawdata,i).start()
+                end_matched = rule.match(rawdata,i).end()
+                instance = rule(rawdata[start_matched:end_matched])
+                #次の行の処理のために、現在の行の種類を保存する
+                previous_line_type = rule
+                i = end_matched
+                return 
+        #header要素に合致するかを判断する。
+        if header_block.match(rawdata, i):
+            start_matched = header_block.match(rawdata,i).start()
+            end_matched = header_block.match(rawdata,i).end()
+            instance = headers(rawdata[start_matched:end_matched])
+            self.appendParsedObj(instance)
+            i = end_matched
+            previous_line_type = "Blank"
+            return
+        #block要素のいずれにも合致しなかった場合
+        if not blank_line.match(rawdata, i):
+            #行末のインデックスをjに代入
+            j = re.compile(r'.*').search(rawdata).end()
+            text_buffer += rawdata[i:j]
+            previous_line_type = "Normal"
+            i = j
+            return
 
     def expandToHTML(self):
         #expand parced objects to HTML recursively        
