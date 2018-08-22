@@ -5,21 +5,24 @@ from collections import OrderedDict
 #正規表現定義エリア
 #ブロック要素
 block_rules = OrderedDict()
-block_rules[table] = re.compile(r'''
+block_rules['Table'] = re.compile(r'''
     ^(.*)           
     \|               #symbol that tells this block is a table           
     (.*)
 ''', re.VERBOSE)
-block_rules[blockQuote] = re.compile(r"""
+block_rules['BlockQuote'] = re.compile(r"""
     (&gt;|\>)        #symbol that tells this line is a start of blockquote
     (.*)
 """, re.VERBOSE)
-block_rules[taggedBlock] = re.compile(r"""
+block_rules['TaggedBlock'] = re.compile(r"""
     ^(\<p\>)         #start tag
     (.*)
-    (\<\/p\>)$       #end tag
 """, re.VERBOSE)
-block_rules[links] = re.compile(r"""
+block_rules['TaggedBlockEnd'] = re.compile(r"""
+    (.*)
+    (\< \s* \/ \s* p \s* \>)    #end tag
+""", re.VERBOSE)
+block_rules['Links'] = re.compile(r"""
     \[
         ([^\[]+)
     \]
@@ -27,22 +30,22 @@ block_rules[links] = re.compile(r"""
         ([^\)]+)
     \)
 """, re.VERBOSE)
-block_rules[ulLists] = re.compile(r"""
+block_rules['ulLists'] = re.compile(r"""
     \s*\*\s+(.*)
 """, re.VERBOSE)
-block_rules[olLists] = re.compile(r"""
+block_rules['olLists'] = re.compile(r"""
     \s*[0-9]+\.\s+(.*)
 """, re.VERBOSE)
-block_rules[horizontalRule] = re.compile(r"""
+block_rules['HorizontalRule'] = re.compile(r"""
     ^((\-\s?){3,}|
     (\*\s?){3,}|
     (\_\s?){3,})
     \s*$
 """, re.VERBOSE)
-block_rules[codeBlock] = re.compile(r"""
+block_rules['CodeBlock'] = re.compile(r"""
     \s{4,}\w*
 """, re.VERBOSE)
-block_rules[definitionBlock] = re.compile(r"""
+block_rules['DefinitionBlock'] = re.compile(r"""
     \[
     [^\[]*
     \]
@@ -52,26 +55,26 @@ block_rules[definitionBlock] = re.compile(r"""
 
 #インライン要素
 inline_rules = OrderedDict()
-inline_rules[lineBreak] = re.compile(r'\s{2,}\n')
-inline_rules[boldFont] = re.compile(r"""
+inline_rules['LineBreak'] = re.compile(r'\s{2,}\n')
+inline_rules['BoldFont'] = re.compile(r"""
     (\*\*|__)(.*?)\1
 """, re.VERBOSE)
-inline_rules[emphasizedFont] = re.compile(r"""
+inline_rules['EmphasizedFont'] = re.compile(r"""
     (\*|_)(.*?)\1
 """, re.VERBOSE)
-inline_rules[deletedFont] = re.compile(r"""
+inline_rules['DeletedFont'] = re.compile(r"""
     \~\~(.*?)\~\~
 """, re.VERBOSE)
-inline_rules[inlineQuote] = re.compile(r"""
+inline_rules['InlineQuote'] = re.compile(r"""
     \:\"(.*?)\"\:
 """, re.VERBOSE)
-inline_rules[inlineCode] = re.compile(r"""
+inline_rules['InlineCode'] = re.compile(r"""
     `(.*?)`
 """, re.VERBOSE)
 
 #その他個別ルール
 blank_line = re.compile(r"""
-    \s*\n
+    \s*\n$
 """,　re.VERBOSE)
 header_line = re.compile(r"""
     ^((\-){3,}|
@@ -89,6 +92,9 @@ class MarkdownParser:
     def __init__(self):
         pass
 
+    def preprocessData(self):
+        #ファイルを行ごとに分割してlist形式にする
+
     def title_handler(self):
         pass
 
@@ -96,126 +102,159 @@ class MarkdownParser:
         pass
 
 class baseObject:
-    # def __init__(self, listed_data):
-    #     self.rawdata = listed_data
-    #     self.parsed_data = []
-    #     self.text_buffer = []
-    #     reset()
+    # this class doesn't have __init__ function.
+    # __init__ will be defined at each subclasses like this:
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        
+        reset()
 
     def reset(self):
         self.start_index = 0
+        self.text_buffer = []
 
     def parse(self):
         if len(self.rawdata) == 0:
             return
 
         i = self.start_index
-        text_buffer = []
-        # if previous_line_type = 'Blank'
-            if previous_line_type == "blank":
-                
+        
+        while i < len(self.rawdata):
+            if previous_line_type == 'Blank':
+                self.text_buffer = []
+                previous_line_type = self.parseFirstTime(self.rawdata[i])
+                i += 1
+                continue
+
             elif previous_line_type == 'Normal':
-                #次の文が---等だった場合、前の要素がh1ヘッダになる
-                if header_line.match(rawdata, i):
-                    instance = headers(text_buffer,1)
-                    previous_line_type = 'Blank'
-                    return
-                if blank_line.match(rawdata, i):
-                    self.appendParsedText(text_buffer)
-                    i = re.compile(r'.*').search(rawdata).end()
-                    previous_line_type = 'Blank'
-                    return
-                else:
-                    #行末のインデックスをjに代入
-                    j = re.compile(r'.*').search(rawdata).end()
-                    text_buffer += rawdata[i:j]
-                    i = j
-                    return
+                previous_line_type = self.parseNormalBlock(self.rawdata[i])
+                i += 1
+                continue
 
-            elif previous_line_type == table:
-                if block_rules[table].match(rawdata, i):
-                    start_matched = block_rules[table].match(rawdata, i).start()
-                    end_matched = block_rules[table].match(rawdata, i).end()
-                    instance.appendRawData(rawdata[start_matched:end_matched])
-                    i = end_matched
-                    return
-                if blank_line.match(rawdata, i):
-                    self.appendParsedObj(instance)
-                    #行末にインデックスを移動
-                    i = re.compile(r'.*').search(rawdata).end()
-                    previous_line_type = 'Blank'
-                    return
+            elif previous_line_type == 'Table':
+                previous_line_type = self.parseTableBlock(self.rawdata[i])
+                i += 1
+                continue
 
-            elif previous_line_type == blockQuote:
-                if block_rules[blockQuote].match(rawdata, i):
-                    #行頭の>を取り除く動作は個別クラスで実装する
-                    start_matched = block_rules[blockQuote].match(rawdata, i).start()
-                    end_matched = block_rules[blockQuote].match(rawdata, i).end()
-                    instance.appendRawData(rawdata[start_matched:end_matched])
-                    i = end_matched
-                    return
-                if blank_line.match(rawdata, i):
-                    #空行でブロックの終わりを検知する
-                    self.appendParsedObj(instance)
-                    #行末にインデックスを移動
-                    i = re.compile(r'.*').search(rawdata).end()
-                    previous_line_type = 'Blank'
-                    return
-                else:
-                    j = re.compile(r'.*').search(rawdata).end()
-                    instance.appendRawData(rawdata[i:j])
-                    i = j
-                    return
+            elif previous_line_type == 'BlockQuote':
+                previous_line_type = parseBlockQuote(self.rawdata[i])
+                i += 1
+                continue
 
-        while i < len(rawdata):
-            ##ブロック要素についての処理
-            #前の行の要素が空行の場合、または文頭の場合:
-            if previous_line_type = 'Blank':
-                matchBlockElements('Blank')
+            elif previous_line_type == 'TaggedBlock':
+                previous_line_type = self.parseTaggedBlock(self.rawdata[i])
+                i += 1
+                continue
 
-            #前の行の要素が通常文だった場合
-            if previous_line_type == 'Normal':
-                matchBlockElements('Normal')
+            elif previous_line_type == 'CodeBlock':
+                previous_line_type = self.parseCodeBlock(self.rawdata[i])
+                i += 1
+                continue
 
-            #以下、前の行がそれぞれのブロック要素のときについて実装する。
-            if previous_line_type == table:
-                matchBlockElements(table)
+            elif previous_line_type == 'ulLists':
+                previous_line_type, previous_indent = self.parseUlLists(self.rawdata[i])
+                i += 1
+                continue
 
-            if previous_line_type == blockQuote:
-                matchBlockElements(blockQuote)
 
-    def parseFirstTime(self, listed_data, start_index):
+    ###################################################
+    # 以下、ブロック要素のparse関数。                    #
+    # 返り値としてparseした行の種類を返します。（例外あり）#
+    ###################################################
+
+    def parseFirstTime(self, text):
         #block要素のルールに合致するかを判断する。
         for rule in self.block_rules.keys():
-            if rule.match(rawdata, i):
-                start_matched = rule.match(rawdata,i).start()
-                end_matched = rule.match(rawdata,i).end()
-                instance = rule(rawdata[start_matched:end_matched])
+            if rule.match(text):
+                self.text_buffer.append(text)
                 #次の行の処理のために、現在の行の種類を保存する
-                previous_line_type = rule
-                i = end_matched
-                return 
+                return rule
         #header要素に合致するかを判断する。
-        if header_block.match(rawdata, i):
-            start_matched = header_block.match(rawdata,i).start()
-            end_matched = header_block.match(rawdata,i).end()
-            instance = headers(rawdata[start_matched:end_matched])
-            self.appendParsedObj(instance)
-            i = end_matched
-            previous_line_type = "Blank"
-            return
+        if header_block.match(text):
+            self.parsed_data.append(headers(text))
+            return 'Blank'
         #block要素のいずれにも合致しなかった場合
-        if not blank_line.match(rawdata, i):
-            #行末のインデックスをjに代入
-            j = re.compile(r'.*').search(rawdata).end()
-            text_buffer += rawdata[i:j]
-            previous_line_type = "Normal"
-            i = j
-            return
+        if not blank_line.match(text):
+            self.text_buffer.append(text)
+            return 'Normal'
+
+    def parseNormalBlock(self, text):
+        #次の文が---等だった場合、前の要素がh1ヘッダになる
+        if header_line.match(text):
+            self.parsed_data.append(headers(self.text_buffer))
+            #次の文の処理は振り出しに戻したいので'Blank'を返す
+            return 'Blank'
+        if blank_line.match(text):
+            for line in self.text_buffer:
+                self.parsed_data.append(line)
+            return 'Blank'
+        else:
+            self.text_buffer.append(text)
+            return 'Normal'
+
+    def parseTableBlock(self, text):
+        if block_rules['Table'].match(text):
+            self.text_buffer.append(text)
+            return table
+        elif blank_line.match(text):
+            self.parsed_data.append(table(self.text_buffer))
+            return 'Blank'
+        else:
+            return -1
+
+    def parseBlockQuote(self, text):
+        if block_rules['BlockQuote'].match(text):
+            #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
+            stripped_text = text.replace('>', '', 1).strip()
+            self.text_buffer.append(stripped_text)
+            return 'BlockQuote'
+        if blank_line.match(rawdata, i):
+            #空行でブロックの終わりを検知する
+            self.parsed_data.append(blockQuote(self.text_buffer))
+            return 'Blank'
+        else:
+            self.text_buffer.append(text)
+            return 'BlockQuote'
+
+    def parseTaggedBlock(self, text):
+        if block_rules['TaggedBlockEnd'].match(text):
+            self.parsed_data.append(taggedBlock(self.text_buffer))
+            return 'Blank'
+        else:
+            self.text_buffer.append(text)
+            return 'TaggedBlock'
+
+    def parseCodeBlock(self, text):
+        #まず、parseFirstTime()で処理されていない、text_bufferの1要素目の先頭の空白を取り除く。
+        self.text_buffer[0] = self.text_buffer[0].lstrip()
+
+        if block_rules['CodeBlock'].match(text):
+            stripped_text = text.lstrip()
+            self.text_buffer.append(stripped_text)
+            return 'CodeBlock'
+        elif blank_line.match(text):
+            self.parsed_data.append(codeBlock(self.text_buffer))
+            return 'Blank'
+        else:
+            self.text_buffer.append(text)
+            return 'CodeBlock'
+
+    def parseUlLists(self, text, indent):
+
 
     def expandToHTML(self):
         #expand parced objects to HTML recursively        
         pass
+
+    @staticmethod
+    def countIndent(text):
+        blank = re.compile(r'\W')
+        count = 0
+        while blank.match(text):
+            count += 1
+            text = text.replace(' ', '', 1)
+        return count
 
 class root(baseObject):
         
