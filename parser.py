@@ -153,7 +153,12 @@ class baseObject:
                 continue
 
             elif previous_line_type == 'ulLists':
-                previous_line_type, previous_indent = self.parseUlLists(self.rawdata[i])
+                previous_line_type = self.parseUlLists(self.rawdata[i])
+                i += 1
+                continue
+
+            elif previous_line_type == 'olLists':
+                previous_line_type = self.parseOlLists(self.rawdata[i])
                 i += 1
                 continue
 
@@ -240,8 +245,77 @@ class baseObject:
             self.text_buffer.append(text)
             return 'CodeBlock'
 
-    def parseUlLists(self, text, indent):
+    def parseUlLists(self, text):
+        base_indent = self.countIndent(self.text_buffer[0])
+        current_line_indent = self.countIndent(text)
+        if block_rules['ulLists'].match(text):
+            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
+            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
+                # 左端をbase_indent分だけトリミングする
+                stripped_text = text.replace(' ', '', base_indent)
+                self.text_buffer.append(stripped_text)
+                return 'ulLists'
+            else:
+                # 左端の'*'マークまでトリミングする
+                stripped_text = re.sub(r'\W*[\-\+\*]\s', '', text, 1)
+                self.text_buffer.append(stripped_text)
+                return 'ulLists'
+        elif block_rules['olLists'].match(text):
+            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
+            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
+                # 左端をbase_indent分だけトリミングする
+                stripped_text = text.replace(' ', '', base_indent)
+                self.text_buffer.append(stripped_text)
+                return 'ulLists'
+            else:
+                # 左端の空白をトリミングする
+                stripped_text = text.lstrip()
+                self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
+                return 'ulLists'
+        elif blank_line.match(text):
+            self.parsed_data.append(ulLists(self.text_buffer))
+            return 'Blank'
+        else:
+            # 左端の空白をトリミングする
+            stripped_text = text.lstrip()
+            self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
+            return 'ulLists'
 
+    def parseOlLists(self, text):
+        base_indent = self.countIndent(self.text_buffer[0])
+        current_line_indent = self.countIndent(text)
+        if block_rules['olLists'].match(text):
+            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
+            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
+                # 左端をbase_indent分だけトリミングする
+                stripped_text = text.replace(' ', '', base_indent)
+                self.text_buffer.append(stripped_text)
+                return 'olLists'
+            else:
+                # 左端の'*'マークまでトリミングする
+                stripped_text = re.sub(r'\W*[0-9]\.\s', '', text, 1)
+                self.text_buffer.append(stripped_text)
+                return 'olLists'
+        elif block_rules['ulLists'].match(text):
+            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
+            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
+                # 左端をbase_indent分だけトリミングする
+                stripped_text = text.replace(' ', '', base_indent)
+                self.text_buffer.append(stripped_text)
+                return 'olLists'
+            else:
+                # 左端の空白をトリミングする
+                stripped_text = text.lstrip()
+                self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
+                return 'olLists'
+        elif blank_line.match(text):
+            self.parsed_data.append(ulLists(self.text_buffer))
+            return 'Blank'
+        else:
+            # 左端の空白をトリミングする
+            stripped_text = text.lstrip()
+            self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
+            return 'olLists'
 
     def expandToHTML(self):
         #expand parced objects to HTML recursively        
