@@ -99,13 +99,12 @@ class MarkdownParser:
 class baseObject:
     # this class doesn't have __init__ function.
     # __init__ will be defined at each subclasses like this:
-    def __init__(self, listed_data):
-        self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
-        
-        reset()
+    # def __init__(self, listed_data):
+    #     self.rawdata = listed_data
+    #     self.parsed_data = []
+    #     self.block_reg = []
+    #     self.inline_reg = []
+    #     reset()
 
     def reset(self):
         self.start_index = 0
@@ -361,10 +360,28 @@ class baseObject:
         return count
 
 class root(baseObject):
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
+        reset()
         
 class table(baseObject):
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
+        reset()
 
 class blockQuote(baseObject):
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
+        reset()
 
 class headers(baseObject):
     def __init__(self, data, level=None):
@@ -377,17 +394,56 @@ class headers(baseObject):
             reset()
 
 class taggedBlock(baseObject):
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
+        reset()
+
     def parse(self):
         #We don't parse any words in tagged block.
         return
 
 class ulLists(baseObject):
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
+        reset()
 
 class olLists(baseObject):
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
+        reset()
 
 class horizontalRule(baseObject):
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
+        reset()
+
+class codeBlock(baseObject):
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
+        reset()
 
 class normalBlock(baseObject):
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
+        reset()
 
 class lineBreak(baseObject):
     def __init__(self, string):
@@ -397,7 +453,13 @@ class lineBreak(baseObject):
     def shapeData(self):
         self.rawdata = []
 
+    def parse(self):
+        pass
+
 class links(baseObject):
+    def __init__(self, string):
+        self.rawdata = string
+        self.parsed_data = []
 
 class boldFont(baseObject):
     def __init__(self, string):
@@ -407,6 +469,9 @@ class boldFont(baseObject):
     def shapeData(self):
         shaped_text = self.rawdata.lstrip('*', 2).rstrip('*', 2)
         self.parsed_data = shaped_text
+
+    def parse(self):
+        pass
 
 class emphasizedFont(baseObject):
     def __init__(self, string):
@@ -418,6 +483,9 @@ class emphasizedFont(baseObject):
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
 
+    def parse(self):
+        pass
+
 class deletedFont(baseObject):
     def __init__(self, string):
         self.rawdata = string
@@ -428,6 +496,9 @@ class deletedFont(baseObject):
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
 
+    def parse(self):
+        pass
+
 class inlineCode(baseObject):
     def __init__(self, string):
         self.rawdata = string
@@ -437,8 +508,10 @@ class inlineCode(baseObject):
         rule = re.compile(r'(`{1,})(?P<content> .*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
+
+    def parse(self):
+        pass
     
-class codeBlock(baseObject):
 
 class definitionBlock:
 
