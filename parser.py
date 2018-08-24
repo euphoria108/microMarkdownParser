@@ -22,25 +22,11 @@ block_rules['TaggedBlockEnd'] = re.compile(r"""
     (.*)
     (\< \s* \/ \s* p \s* \>)    #end tag
 """, re.VERBOSE)
-block_rules['Links'] = re.compile(r"""
-    \[
-        ([^\[]+)
-    \]
-    \(
-        ([^\)]+)
-    \)
-""", re.VERBOSE)
 block_rules['ulLists'] = re.compile(r"""
     \s*\*\s+(.*)
 """, re.VERBOSE)
 block_rules['olLists'] = re.compile(r"""
     \s*[0-9]+\.\s+(.*)
-""", re.VERBOSE)
-block_rules['HorizontalRule'] = re.compile(r"""
-    ^((\-\s?){3,}|
-    (\*\s?){3,}|
-    (\_\s?){3,})
-    \s*$
 """, re.VERBOSE)
 block_rules['CodeBlock'] = re.compile(r"""
     \s{4,}\w*
@@ -71,6 +57,11 @@ inline_rules['InlineQuote'] = re.compile(r"""
 inline_rules['InlineCode'] = re.compile(r"""
     `(.*?)`
 """, re.VERBOSE)
+inline_rules['Links'] = re.compile(r"""
+    \[
+        ([^\[]+)
+    \]
+""", re.VERBOSE)
 
 #その他個別ルール
 blank_line = re.compile(r"""
@@ -86,6 +77,13 @@ header_block = re.compile(r"""
     (\#+)            #header symbol
     (.*)
 """, re.VERBOSE)
+horizontal_rule = re.compile(r"""
+    ^((\-\s?){3,}|
+    (\*\s?){3,}|
+    (\_\s?){3,})
+    \s*$
+""", re.VERBOSE)
+
 
 
 class MarkdownParser:
@@ -107,6 +105,8 @@ class baseObject:
     def __init__(self, listed_data):
         self.rawdata = listed_data
         self.parsed_data = []
+        self.block_reg = []
+        self.inline_reg = []
         
         reset()
 
@@ -175,14 +175,37 @@ class baseObject:
                 self.text_buffer.append(text)
                 #次の行の処理のために、現在の行の種類を保存する
                 return rule
-        #header要素に合致するかを判断する。
         if header_block.match(text):
             self.parsed_data.append(headers(text))
+            return 'Blank'
+        if horizontal_rule.match(text):
+            self.parsed_data.append(horizontalRule())
             return 'Blank'
         #block要素のいずれにも合致しなかった場合
         if not blank_line.match(text):
             self.text_buffer.append(text)
             return 'Normal'
+
+    def parseInlineElements(self, text):
+        parsed_text = []
+        for dictitem in self.inline_reg:
+            if dictitem['rule'].search(text):
+                element = dictitem['rule'].search(text).group()
+                instance = dictitem['class'](element)
+                instance.shapeData()
+                #（elementsを整形する処理は個別のクラスで実装）
+                devided_text = re.sub(dictitem['rule'], '|', text, 1).split(|)
+                #before_element and after_element should be list.
+                before_element = self.parseInlineElements(devided_text[0])
+                after_element = self.parseInlineElements(devided_text[1])
+                for item in before_element:
+                    parsed_text.append(item)
+                parsed_text.append(instance)
+                for item in after_element:
+                    parsed_text.append(item)
+                return parsed_text
+        #if any inline rules didn't match with text
+        return [text]
 
     def parseNormalBlock(self, text):
         #次の文が---等だった場合、前の要素がh1ヘッダになる
@@ -192,7 +215,8 @@ class baseObject:
             return 'Blank'
         if blank_line.match(text):
             for line in self.text_buffer:
-                self.parsed_data.append(line)
+                parsed_line = parseInlineElements(line)
+                self.parsed_data.append(parsed_line)
             return 'Blank'
         else:
             self.text_buffer.append(text)
@@ -318,7 +342,7 @@ class baseObject:
             return 'olLists'
 
     def expandToHTML(self):
-        #expand parced objects to HTML recursively        
+        #this method will be overrided at each subclasses.
         pass
 
     @staticmethod
