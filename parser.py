@@ -51,11 +51,8 @@ inline_rules['EmphasizedFont'] = re.compile(r"""
 inline_rules['DeletedFont'] = re.compile(r"""
     \~\~(.*?)\~\~
 """, re.VERBOSE)
-inline_rules['InlineQuote'] = re.compile(r"""
-    \:\"(.*?)\"\:
-""", re.VERBOSE)
 inline_rules['InlineCode'] = re.compile(r"""
-    `(.*?)`
+    (`{1,})(.*?)\1
 """, re.VERBOSE)
 inline_rules['Links'] = re.compile(r"""
     \[
@@ -162,11 +159,17 @@ class baseObject:
                 i += 1
                 continue
 
+            #ブロック要素として処理ができないとき、通常文として処理する。
+            elif previous_line_type == -1
+                previous_line_type = self.parseNormalBlock(self.rawdata[i])
+                i += 1
+                continue
 
-    ###################################################
-    # 以下、ブロック要素のparse関数。                    #
-    # 返り値としてparseした行の種類を返します。（例外あり）#
-    ###################################################
+    #####################################################
+    # 以下、ブロック要素のparse関数。                      #
+    # 返り値としてparseした行の種類を返します。（例外あり）  #
+    # 関数内でオブジェクトを生成したらparse()を実行すること。#
+    #####################################################
 
     def parseFirstTime(self, text):
         #block要素のルールに合致するかを判断する。
@@ -194,15 +197,17 @@ class baseObject:
                 instance = dictitem['class'](element)
                 instance.shapeData()
                 #（elementsを整形する処理は個別のクラスで実装）
-                devided_text = re.sub(dictitem['rule'], '|', text, 1).split(|)
+                devided_text = re.sub(dictitem['rule'], '_splitter_', text, 1).split('_splitter_')
                 #before_element and after_element should be list.
                 before_element = self.parseInlineElements(devided_text[0])
                 after_element = self.parseInlineElements(devided_text[1])
                 for item in before_element:
-                    parsed_text.append(item)
+                    if item != '':
+                        parsed_text.append(item)
                 parsed_text.append(instance)
                 for item in after_element:
-                    parsed_text.append(item)
+                    if item != '':
+                        parsed_text.append(item)
                 return parsed_text
         #if any inline rules didn't match with text
         return [text]
@@ -216,7 +221,8 @@ class baseObject:
         if blank_line.match(text):
             for line in self.text_buffer:
                 parsed_line = parseInlineElements(line)
-                self.parsed_data.append(parsed_line)
+                for item in parsed_line:
+                    self.parsed_data.append(item)
             return 'Blank'
         else:
             self.text_buffer.append(text)
@@ -225,7 +231,7 @@ class baseObject:
     def parseTableBlock(self, text):
         if block_rules['Table'].match(text):
             self.text_buffer.append(text)
-            return table
+            return 'Table'
         elif blank_line.match(text):
             self.parsed_data.append(table(self.text_buffer))
             return 'Blank'
@@ -343,7 +349,7 @@ class baseObject:
 
     def expandToHTML(self):
         #this method will be overrided at each subclasses.
-        pass
+        raise NotImplementedError
 
     @staticmethod
     def countIndent(text):
@@ -360,8 +366,6 @@ class table(baseObject):
 
 class blockQuote(baseObject):
 
-class lineBreak(baseObject):
-
 class headers(baseObject):
     def __init__(self, data, level=None):
         if level:
@@ -372,30 +376,67 @@ class headers(baseObject):
             self.parsed_data = []
             reset()
 
-class links(baseObject):
-
 class taggedBlock(baseObject):
     def parse(self):
         #We don't parse any words in tagged block.
         return
-
-class normalBlock(baseObject):
-
-class boldFont(baseObject):
-
-class emphasizedFont(baseObject):
-
-class deletedFont(baseObject):
-
-class inlineQuote(baseObject):
-
-class inlineCode(baseObject):
 
 class ulLists(baseObject):
 
 class olLists(baseObject):
 
 class horizontalRule(baseObject):
+
+class normalBlock(baseObject):
+
+class lineBreak(baseObject):
+    def __init__(self, string):
+        self.rawdata = string
+        self.parsed_data = []
+        
+    def shapeData(self):
+        self.rawdata = []
+
+class links(baseObject):
+
+class boldFont(baseObject):
+    def __init__(self, string):
+        self.rawdata = string
+        self.parsed_data = []
+        
+    def shapeData(self):
+        shaped_text = self.rawdata.lstrip('*', 2).rstrip('*', 2)
+        self.parsed_data = shaped_text
+
+class emphasizedFont(baseObject):
+    def __init__(self, string):
+        self.rawdata = string
+        self.parsed_data = []
+        
+    def shapeData(self):
+        rule = re.compile(r'(\*\*)(?P<content> .*?)\1')
+        shaped_text = rule.search(self.rawdata).group('content').strip()
+        self.parsed_data = shaped_text
+
+class deletedFont(baseObject):
+    def __init__(self, string):
+        self.rawdata = string
+        self.parsed_data = []
+        
+    def shapeData(self):
+        rule = re.compile(r'(\~\~)(?P<content> .*?)\1')
+        shaped_text = rule.search(self.rawdata).group('content').strip()
+        self.parsed_data = shaped_text
+
+class inlineCode(baseObject):
+    def __init__(self, string):
+        self.rawdata = string
+        self.parsed_data = []
+        
+    def shapeData(self):
+        rule = re.compile(r'(`{1,})(?P<content> .*?)\1')
+        shaped_text = rule.search(self.rawdata).group('content').strip()
+        self.parsed_data = shaped_text
     
 class codeBlock(baseObject):
 
