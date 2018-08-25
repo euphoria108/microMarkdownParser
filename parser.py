@@ -31,13 +31,6 @@ block_rules['olLists'] = re.compile(r"""
 block_rules['CodeBlock'] = re.compile(r"""
     \s{4,}\w*
 """, re.VERBOSE)
-block_rules['DefinitionBlock'] = re.compile(r"""
-    \[
-    [^\[]*
-    \]
-    \:
-    (.*)
-""", re.VERBOSE)
 
 #インライン要素
 inline_rules = OrderedDict()
@@ -55,9 +48,20 @@ inline_rules['InlineCode'] = re.compile(r"""
     (`{1,})(.*?)\1
 """, re.VERBOSE)
 inline_rules['Links'] = re.compile(r"""
-    \[
+    (\[)
         ([^\[]+)
-    \]
+    (\])
+    ([\[\(])
+        (.*?)
+    ([\]\)])
+""", re.VERBOSE)
+inline_rules['Images'] = re.compile(r"""
+    (!\[)
+        ([^\[]+)
+    (\])
+    ([\[\(])
+        (.*?)
+    ([\]\)])
 """, re.VERBOSE)
 
 #その他個別ルール
@@ -80,21 +84,42 @@ horizontal_rule = re.compile(r"""
     (\_\s?){3,})
     \s*$
 """, re.VERBOSE)
-
+definition_block = re.compile(r"""
+    (\[)
+    ([^\[]+)
+    (\])
+    \:
+    (.*)
+""", re.VERBOSE)
 
 
 class MarkdownParser:
     def __init__(self):
+        self.rootobject = root()
         pass
 
-    def preprocessData(self):
+    def parse(self, filepath):
+        """
+        This function will read markdown file and parse it.
+        Only a file encoded with UTF-8 is appliable.
+        """
         #ファイルを行ごとに分割してlist形式にする
-
+        with open(filepath, 'rt', encoding='utf-8') as f:
+            data = f.read()
+            splitted_data = []
+            for line in data.split('\n'):
+                splitted_data.append(line)
+            self.rootobject.rawdata = splitted_data
+        self.rootobject.parse()
+    
     def title_handler(self):
         pass
 
     def block_handler(self):
         pass
+
+#URLリンクのid情報を保存する辞書オブジェクト
+link_id_info = {}
 
 class baseObject:
     # this class doesn't have __init__ function.
@@ -115,6 +140,7 @@ class baseObject:
             return
 
         i = self.start_index
+        previous_line_type = 'Blank'
         
         while i < len(self.rawdata):
             if previous_line_type == 'Blank':
@@ -178,10 +204,15 @@ class baseObject:
                 #次の行の処理のために、現在の行の種類を保存する
                 return rule
         if header_block.match(text):
-            self.parsed_data.append(headers(text))
+            instance = headers(text)
+            instance.parse()
+            self.parsed_data.append(instance)
             return 'Blank'
         if horizontal_rule.match(text):
             self.parsed_data.append(horizontalRule())
+            return 'Blank'
+        if definition_block.match(text):
+            self.parseDefinitionBlock(text)
             return 'Blank'
         #block要素のいずれにも合致しなかった場合
         if not blank_line.match(text):
@@ -190,13 +221,13 @@ class baseObject:
 
     def parseInlineElements(self, text):
         parsed_text = []
-        for dictitem in self.inline_reg:
-            if dictitem['rule'].search(text):
-                element = dictitem['rule'].search(text).group()
-                instance = dictitem['class'](element)
+        for dit in self.inline_reg:
+            if dit['rule'].search(text):
+                element = dit['rule'].search(text).group()
+                instance = dit['class'](element)
                 instance.shapeData()
                 #（elementsを整形する処理は個別のクラスで実装）
-                devided_text = re.sub(dictitem['rule'], '_splitter_', text, 1).split('_splitter_')
+                devided_text = re.sub(dit['rule'], '_splitter_', text, 1).split('_splitter_')
                 #before_element and after_element should be list.
                 before_element = self.parseInlineElements(devided_text[0])
                 after_element = self.parseInlineElements(devided_text[1])
@@ -208,13 +239,15 @@ class baseObject:
                     if item != '':
                         parsed_text.append(item)
                 return parsed_text
-        #if any inline rules didn't match with text
+        #if all inline rules didn't match with text
         return [text]
 
     def parseNormalBlock(self, text):
         #次の文が---等だった場合、前の要素がh1ヘッダになる
         if header_line.match(text):
-            self.parsed_data.append(headers(self.text_buffer))
+            instance = headers(self.text_buffer)
+            instance.parse()
+            self.parsed_data.append(instance)
             #次の文の処理は振り出しに戻したいので'Blank'を返す
             return 'Blank'
         if blank_line.match(text):
@@ -232,7 +265,9 @@ class baseObject:
             self.text_buffer.append(text)
             return 'Table'
         elif blank_line.match(text):
-            self.parsed_data.append(table(self.text_buffer))
+            instance = table(self.text_buffer)
+            instance.parse()
+            self.parsed_data.append(instance)
             return 'Blank'
         else:
             return -1
@@ -245,7 +280,9 @@ class baseObject:
             return 'BlockQuote'
         if blank_line.match(rawdata, i):
             #空行でブロックの終わりを検知する
-            self.parsed_data.append(blockQuote(self.text_buffer))
+            instance = blockQuote(self.text_buffer)
+            instance.parse()
+            self.parsed_data.append(instance)
             return 'Blank'
         else:
             self.text_buffer.append(text)
@@ -253,7 +290,9 @@ class baseObject:
 
     def parseTaggedBlock(self, text):
         if block_rules['TaggedBlockEnd'].match(text):
-            self.parsed_data.append(taggedBlock(self.text_buffer))
+            instance = taggedBlock(self.text_buffer)
+            instance.parse()
+            self.parsed_data.append(instance)
             return 'Blank'
         else:
             self.text_buffer.append(text)
@@ -268,17 +307,21 @@ class baseObject:
             self.text_buffer.append(stripped_text)
             return 'CodeBlock'
         elif blank_line.match(text):
-            self.parsed_data.append(codeBlock(self.text_buffer))
+            instance = codeBlock(self.text_buffer)
+            instance.parse()
+            self.parsed_data.append(instance)
             return 'Blank'
         else:
             self.text_buffer.append(text)
             return 'CodeBlock'
 
     def parseUlLists(self, text):
+        #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
         if block_rules['ulLists'].match(text):
             # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
+            # 行頭の'*'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
             if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
                 # 左端をbase_indent分だけトリミングする
                 stripped_text = text.replace(' ', '', base_indent)
@@ -291,6 +334,7 @@ class baseObject:
                 return 'ulLists'
         elif block_rules['olLists'].match(text):
             # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
+            # 行頭の'1.'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
             if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
                 # 左端をbase_indent分だけトリミングする
                 stripped_text = text.replace(' ', '', base_indent)
@@ -302,10 +346,12 @@ class baseObject:
                 self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
                 return 'ulLists'
         elif blank_line.match(text):
-            self.parsed_data.append(ulLists(self.text_buffer))
+            instance = ulLists(self.text_buffer)
+            instance.parse()
+            self.parsed_data.append(instance)
             return 'Blank'
         else:
-            # 左端の空白をトリミングする
+            # その他の場合、現在の行をリストの最後のitemの中身に含める。
             stripped_text = text.lstrip()
             self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
             return 'ulLists'
@@ -314,7 +360,8 @@ class baseObject:
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
         if block_rules['olLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
+            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する。
+            # 行頭の'1.'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
             if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
                 # 左端をbase_indent分だけトリミングする
                 stripped_text = text.replace(' ', '', base_indent)
@@ -326,7 +373,8 @@ class baseObject:
                 self.text_buffer.append(stripped_text)
                 return 'olLists'
         elif block_rules['ulLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
+            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する。
+            # 行頭の'*'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
             if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
                 # 左端をbase_indent分だけトリミングする
                 stripped_text = text.replace(' ', '', base_indent)
@@ -338,7 +386,9 @@ class baseObject:
                 self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
                 return 'olLists'
         elif blank_line.match(text):
-            self.parsed_data.append(ulLists(self.text_buffer))
+            instance = ulLists(self.text_buffer)
+            instance.parse()
+            self.parsed_data.append(instance)
             return 'Blank'
         else:
             # 左端の空白をトリミングする
@@ -358,6 +408,26 @@ class baseObject:
             count += 1
             text = text.replace(' ', '', 1)
         return count
+
+    def parseDefinitionBlock(text):
+        rule_id = re.compile(r"(\[)(?P<id>[^\[]+)(\]:)")
+        rule_option = re.compile(r'([\"\'\(])(?P<option>.*)\1')
+        #urlは、元のtextからidとoptional titleを取り除くことによって取得する。
+        url = text
+        optional_title = None
+        id = rule_id.search(text).group('id')
+        if rule_option.search(text):
+            optional_title = rule_option.search(text).group('option')
+            url = rule_option.sub('', url)
+        url = rule_id.sub('', url)
+        url = url.strip()
+        #link_id_infoは、{id: {'url': url, 'optional_title': optional_title}, ...}
+        #という形式をとる。
+        id_information = {}
+        id_information['url'] = url
+        id_information['optional_title'] = optional_title
+        link_id_info[id] = id_information
+
 
 class root(baseObject):
     def __init__(self, listed_data):
@@ -423,11 +493,7 @@ class olLists(baseObject):
 
 class horizontalRule(baseObject):
     def __init__(self, listed_data):
-        self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
-        reset()
+        pass
 
 class codeBlock(baseObject):
     def __init__(self, listed_data):
@@ -459,7 +525,70 @@ class lineBreak(baseObject):
 class links(baseObject):
     def __init__(self, string):
         self.rawdata = string
-        self.parsed_data = []
+        self.title = ""
+        self.url = None
+        self.id = None
+
+    def shapeData(self):
+        rule_url = re.compile(r'''
+        \[
+            (?P<title> [^ \[]+)
+        \]
+        \(
+            (?P<url> [^\(]*?)
+        \)
+        ''', re.VERBOSE)
+        rule_id = re.compile(r'''
+        \[
+            (?P<title> [^ \[]+)
+        \]
+        \[
+            (?P<id> [^\[]*?)
+        \]
+        ''', re.VERBOSE)
+
+        if rule_url.search(self.rawdata):
+            self.title = rule_url.search(self.rawdata).group('title')
+            self.url = rule_url.search(self.rawdata).group('url')
+        if rule_id.search(self.rawdata):
+            self.title = rule_id.search(self.rawdata).group('title')
+            self.id = rule_id.search(self.rawdata).group('id')
+            if self.id = '':
+                self.id = self.title
+
+class images(baseObject):
+    def __init__(self, string):
+        self.rawdata = string
+        self.title = ""
+        self.url = None
+        self.id = None
+
+    def shapeData(self):
+        rule_url = re.compile(r'''
+        \!\[
+            (?P<title> [^ \[]+)
+        \]
+        \(
+            (?P<url> [^\(]*?)
+        \)
+        ''', re.VERBOSE)
+        rule_id = re.compile(r'''
+        \!\[
+            (?P<title> [^ \[]+)
+        \]
+        \[
+            (?P<id> [^\[]*?)
+        \]
+        ''', re.VERBOSE)
+
+        if rule_url.search(self.rawdata):
+            self.title = rule_url.search(self.rawdata).group('title')
+            self.url = rule_url.search(self.rawdata).group('url')
+        if rule_id.search(self.rawdata):
+            self.title = rule_id.search(self.rawdata).group('title')
+            self.id = rule_id.search(self.rawdata).group('id')
+            if self.id = '':
+                self.id = self.title
 
 class boldFont(baseObject):
     def __init__(self, string):
@@ -513,6 +642,5 @@ class inlineCode(baseObject):
         pass
     
 
-class definitionBlock:
 
 
