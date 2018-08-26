@@ -98,7 +98,7 @@ class MarkdownParser:
         self.rootobject = root()
         return
 
-    def parse(self, filepath):
+    def parseFile(self, filepath):
         """
         This function will read markdown file and parse it.
         Only a file encoded with UTF-8 is appliable.
@@ -112,6 +112,16 @@ class MarkdownParser:
             #parse関数の処理の都合上、末尾に空行を挿入する。
             splitted_data.append('')
             self.rootobject.rawdata = splitted_data
+        self.rootobject.parse()
+
+    def parseText(self, textdata):
+        data = textdata
+        splitted_data = []
+        for line in data.split('\n'):
+            splitted_data.append(line)
+        #parse関数の処理の都合上、末尾に空行を挿入する。
+        splitted_data.append('')
+        self.rootobject.rawdata = splitted_data
         self.rootobject.parse()
     
     def title_handler(self):
@@ -196,6 +206,7 @@ class blockObject:
                 previous_line_type = self.parseNormalBlock(self.rawdata[i])
                 i += 1
                 continue
+        del self.rawdata
         return
 
     #####################################################
@@ -408,10 +419,7 @@ class blockObject:
     @staticmethod
     def countIndent(text):
         blank = re.compile(r'\W')
-        count = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
-                return 'ulLists'
-            else:
+        count = 0
         while blank.match(text):
             count += 1
             text = text.replace(' ', '', 1)
@@ -435,6 +443,7 @@ class blockObject:
         id_information['url'] = url
         id_information['optional_title'] = optional_title
         link_id_info[id] = id_information
+        return
 
 class inlineObject:
     # this class will be inherited by inline objects.
@@ -489,6 +498,8 @@ class table(blockObject):
             else:
                 self.alignments[j] = None
             j += 1
+        del self.rawdata
+        return
 
 
 class blockQuote(blockObject):
@@ -500,13 +511,34 @@ class headers(blockObject):
             self.level = level
             self.parsed_data = [data]
         else:
-            self.rawdata = rawdata
+            self.rawdata = data
             self.parsed_data = []
+            self.level = None
             reset()
+
+    def parse(self):
+        if self.level == None:
+            self.level = self.countSharp(self.rawdata)
+            self.parsed_data = self.rawdata.strip('#').strip()
+            del self.rawdata
+        return
+
+    @staticmethod
+    def countSharp(text):
+        text = text.lstrip()
+        sharp = re.compile(r'\#')
+        count = 0
+        while sharp.match(text):
+            count += 1
+            text = text.replace('#', '', 1)
+        return count
 
 class taggedBlock(blockObject):
     def parse(self):
-        #We don't parse any words in tagged block.
+        # 何もせずにparsed_dataへ格納
+        for line in self.rawdata:
+            self.parsed_data.append(line)
+        del self.rawdata
         return
 
 class ulLists(blockObject):
@@ -520,7 +552,12 @@ class horizontalRule(blockObject):
         pass
 
 class codeBlock(blockObject):
-    pass
+    def parse(self):
+        # 何もせずにparsed_dataへ格納
+        for line in self.rawdata:
+            self.parsed_data.append(line)
+        del self.rawdata
+        return
 
 class normalBlock(blockObject):
     pass
@@ -531,7 +568,8 @@ class lineBreak(inlineObject):
         self.parsed_data = []
         
     def shapeData(self):
-        self.rawdata = []
+        del self.rawdata
+        return
 
 
 class links(inlineObject):
@@ -567,6 +605,8 @@ class links(inlineObject):
             self.id = rule_id.search(self.rawdata).group('id')
             if self.id = '':
                 self.id = self.title
+        del self.rawdata
+        return
 
 class images(inlineObject):
     def __init__(self, string):
@@ -601,18 +641,10 @@ class images(inlineObject):
             self.id = rule_id.search(self.rawdata).group('id')
             if self.id = '':
                 self.id = self.title
+        del self.rawdata
+        return
 
 class boldFont(inlineObject):
-    def __init__(self, string):
-        self.rawdata = string
-        self.parsed_data = []
-        
-    def shapeData(self):
-        shaped_text = self.rawdata.lstrip('*', 2).rstrip('*', 2)
-        self.parsed_data = shaped_text
-
-
-class emphasizedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
@@ -621,6 +653,21 @@ class emphasizedFont(inlineObject):
         rule = re.compile(r'(\*\*)(?P<content> .*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
+        del self.rawdata
+        return
+
+
+class emphasizedFont(inlineObject):
+    def __init__(self, string):
+        self.rawdata = string
+        self.parsed_data = []
+        
+    def shapeData(self):
+        rule = re.compile(r'(\*)(?P<content> .*?)\1')
+        shaped_text = rule.search(self.rawdata).group('content').strip()
+        self.parsed_data = shaped_text
+        del self.rawdata
+        return
 
 
 class deletedFont(inlineObject):
@@ -632,6 +679,8 @@ class deletedFont(inlineObject):
         rule = re.compile(r'(\~\~)(?P<content> .*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
+        del self.rawdata
+        return
 
 
 class inlineCode(inlineObject):
@@ -643,4 +692,6 @@ class inlineCode(inlineObject):
         rule = re.compile(r'(`{1,})(?P<content> .*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
+        del self.rawdata
+        return
 
