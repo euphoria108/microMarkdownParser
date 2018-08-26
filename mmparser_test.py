@@ -5,6 +5,9 @@ from collections import OrderedDict
 #正規表現定義エリア
 #ブロック要素
 block_rules = OrderedDict()
+block_rules['CodeBlock'] = re.compile(r"""
+    \s{4,}\w*
+""", re.VERBOSE)
 block_rules['Table'] = re.compile(r'''
     ^(.*)           
     \|               #symbol that tells this block is a table           
@@ -28,18 +31,16 @@ block_rules['ulLists'] = re.compile(r"""
 block_rules['olLists'] = re.compile(r"""
     \s*[0-9]+\.\s+(.*)
 """, re.VERBOSE)
-block_rules['CodeBlock'] = re.compile(r"""
-    \s{4,}\w*
-""", re.VERBOSE)
+
 
 #インライン要素
 inline_rules = OrderedDict()
 inline_rules['LineBreak'] = re.compile(r'\s{2,}$')
 inline_rules['BoldFont'] = re.compile(r"""
-    (\*\*|__)(.*?)\1
+    (\*\*|\_\_)(.*?)\1
 """, re.VERBOSE)
 inline_rules['EmphasizedFont'] = re.compile(r"""
-    (\*|_)(.*?)\1
+    (\*|\_)(.*?)\1
 """, re.VERBOSE)
 inline_rules['DeletedFont'] = re.compile(r"""
     \~\~(.*?)\~\~
@@ -138,13 +139,13 @@ class blockObject:
         self.rawdata = listed_data
         self.parsed_data = []
         self.inline_reg = [
-            {'rule':'LineBreak'      , 'class':lineBreak      },
-            {'rule':'BoldFont'       , 'class':boldFont       },
-            {'rule':'EmphasizedFont' , 'class':emphasizedFont },
-            {'rule':'DeletedFont'    , 'class':deletedFont    },
-            {'rule':'InlineCode'     , 'class':inlineCode     },
-            {'rule':'Links'          , 'class':links          },
-            {'rule':'Images'         , 'class':images         },
+            {'rule':inline_rules['LineBreak']      , 'class':lineBreak      },
+            {'rule':inline_rules['BoldFont']       , 'class':boldFont       },
+            {'rule':inline_rules['EmphasizedFont'] , 'class':emphasizedFont },
+            {'rule':inline_rules['DeletedFont']    , 'class':deletedFont    },
+            {'rule':inline_rules['InlineCode']     , 'class':inlineCode     },
+            {'rule':inline_rules['Links']          , 'class':links          },
+            {'rule':inline_rules['Images']         , 'class':images         },
         ]
         self.reset()
         print("Constructing an object: {0}".format(self.__class__.__name__))
@@ -161,6 +162,7 @@ class blockObject:
         previous_line_type = 'Blank'
         
         while i < len(self.rawdata):
+            print("current index: {}".format(i))
             if previous_line_type == 'Blank':
                 self.text_buffer = []
                 previous_line_type = self.parseFirstTime(self.rawdata[i])
@@ -207,6 +209,8 @@ class blockObject:
                 previous_line_type = self.parseNormalBlock(self.rawdata[i])
                 i += 1
                 continue
+
+            print("passed. PRT: {0}, index: {1}".format(previous_line_type, i))
         del self.rawdata
         return
 
@@ -221,24 +225,33 @@ class blockObject:
         #block要素のルールに合致するかを判断する。
         for rule in block_rules.keys():
             if block_rules[rule].match(text):
+                print("rule {0} matched".format(rule))
                 self.text_buffer.append(text)
                 #次の行の処理のために、現在の行の種類を保存する
                 return rule
         if header_block.match(text):
+            print("rule {0} matched".format('header_block'))
             instance = headers(text)
             instance.parse()
             self.parsed_data.append(instance)
             return 'Blank'
         if horizontal_rule.match(text):
+            print("rule {0} matched".format('horizontal_rule'))
             self.parsed_data.append(horizontalRule([]))
             return 'Blank'
         if definition_block.match(text):
+            print("rule {0} matched".format('definitionblock'))
             self.parseDefinitionBlock(text)
             return 'Blank'
         #block要素のいずれにも合致しなかった場合
         if not blank_line.match(text):
+            print("rule {0} matched".format('other'))
             self.text_buffer.append(text)
             return 'Normal'
+        else:
+            print("rule {0} matched".format('blank'))
+            return 'Blank'
+        print("didn't match any rules")
 
     def parseInlineElements(self, text):
         print("function is called: {0}".format('parseInlineElements'))
@@ -246,6 +259,7 @@ class blockObject:
         for dit in self.inline_reg:
             if dit['rule'].search(text):
                 element = dit['rule'].search(text).group()
+                print("Inline rule {0} is matched. element: {1}".format(dit['class'], element))
                 instance = dit['class'](element)
                 instance.shapeData()
                 #（elementsを整形する処理は個別のクラスで実装）
@@ -303,7 +317,7 @@ class blockObject:
             stripped_text = text.replace('>', '', 1).strip()
             self.text_buffer.append(stripped_text)
             return 'BlockQuote'
-        if blank_line.match(self.rawdata):
+        if blank_line.match(text):
             #空行でブロックの終わりを検知する
             instance = blockQuote(self.text_buffer)
             instance.parse()
@@ -352,7 +366,10 @@ class blockObject:
             # 行頭の'*'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
             if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
                 # 左端をbase_indent分だけトリミングする
-                stripped_text = stripped_text = text.replace(' ', '', base_indent)
+                stripped_text = text.replace(' ', '', base_indent)
+                self.text_buffer.append(stripped_text)
+                return 'ulLists'
+            else:
                 # 左端の'*'マークまでトリミングする
                 stripped_text = re.sub(r'\W*[\-\+\*]\s', '', text, 1)
                 self.text_buffer.append(stripped_text)
@@ -428,8 +445,8 @@ class blockObject:
 
     @staticmethod
     def countIndent(text):
-        print("function is called: {0}".format('countIndent'))
-        blank = re.compile(r'\W')
+        print("function is called: {0}, argument: {1}".format('countIndent', text))
+        blank = re.compile(r'\s')
         count = 0
         while blank.match(text):
             count += 1
@@ -667,7 +684,7 @@ class boldFont(inlineObject):
         print("Constructing an object: {0}".format(self.__class__.__name__))
         
     def shapeData(self):
-        rule = re.compile(r'(\*\*)(?P<content> .*?)\1')
+        rule = re.compile(r'(\*\*|\_\_)(?P<content>.*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
         del self.rawdata
@@ -681,7 +698,7 @@ class emphasizedFont(inlineObject):
         print("Constructing an object: {0}".format(self.__class__.__name__))
         
     def shapeData(self):
-        rule = re.compile(r'(\*)(?P<content> .*?)\1')
+        rule = re.compile(r'(\*|\_)(?P<content>.*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
         del self.rawdata
@@ -695,7 +712,7 @@ class deletedFont(inlineObject):
         print("Constructing an object: {0}".format(self.__class__.__name__))
         
     def shapeData(self):
-        rule = re.compile(r'(\~\~)(?P<content> .*?)\1')
+        rule = re.compile(r'(\~\~)(?P<content>.*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
         del self.rawdata
@@ -709,7 +726,7 @@ class inlineCode(inlineObject):
         print("Constructing an object: {0}".format(self.__class__.__name__))
         
     def shapeData(self):
-        rule = re.compile(r'(`{1,})(?P<content> .*?)\1')
+        rule = re.compile(r'(`{1,})(?P<content>.*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
         del self.rawdata
