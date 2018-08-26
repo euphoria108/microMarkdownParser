@@ -96,7 +96,7 @@ definition_block = re.compile(r"""
 class MarkdownParser:
     def __init__(self):
         self.rootobject = root()
-        pass
+        return
 
     def parse(self, filepath):
         """
@@ -109,6 +109,8 @@ class MarkdownParser:
             splitted_data = []
             for line in data.split('\n'):
                 splitted_data.append(line)
+            #parse関数の処理の都合上、末尾に空行を挿入する。
+            splitted_data.append('')
             self.rootobject.rawdata = splitted_data
         self.rootobject.parse()
     
@@ -121,15 +123,20 @@ class MarkdownParser:
 #URLリンクのid情報を保存する辞書オブジェクト
 link_id_info = {}
 
-class baseObject:
-    # this class doesn't have __init__ function.
-    # __init__ will be defined at each subclasses like this:
-    # def __init__(self, listed_data):
-    #     self.rawdata = listed_data
-    #     self.parsed_data = []
-    #     self.block_reg = []
-    #     self.inline_reg = []
-    #     reset()
+class blockObject:
+    def __init__(self, listed_data):
+        self.rawdata = listed_data
+        self.parsed_data = []
+        self.inline_reg = [
+            {'rule':'LineBreak'      , 'class':lineBreak      },
+            {'rule':'BoldFont'       , 'class':boldFont       },
+            {'rule':'EmphasizedFont' , 'class':emphasizedFont },
+            {'rule':'DeletedFont'    , 'class':deletedFont    },
+            {'rule':'InlineCode'     , 'class':inlineCode     },
+            {'rule':'Links'          , 'class':links          },
+            {'rule':'Images'         , 'class':images         },
+        ]
+        reset()
 
     def reset(self):
         self.start_index = 0
@@ -189,6 +196,7 @@ class baseObject:
                 previous_line_type = self.parseNormalBlock(self.rawdata[i])
                 i += 1
                 continue
+        return
 
     #####################################################
     # 以下、ブロック要素のparse関数。                      #
@@ -198,8 +206,8 @@ class baseObject:
 
     def parseFirstTime(self, text):
         #block要素のルールに合致するかを判断する。
-        for rule in self.block_rules.keys():
-            if rule.match(text):
+        for rule in block_rules.keys():
+            if block_rules[rule].match(text):
                 self.text_buffer.append(text)
                 #次の行の処理のために、現在の行の種類を保存する
                 return rule
@@ -324,10 +332,7 @@ class baseObject:
             # 行頭の'*'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
             if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
                 # 左端をbase_indent分だけトリミングする
-                stripped_text = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
-                return 'ulLists'
-            else:
+                stripped_text = t
                 # 左端の'*'マークまでトリミングする
                 stripped_text = re.sub(r'\W*[\-\+\*]\s', '', text, 1)
                 self.text_buffer.append(stripped_text)
@@ -403,7 +408,10 @@ class baseObject:
     @staticmethod
     def countIndent(text):
         blank = re.compile(r'\W')
-        count = 0
+        count = text.replace(' ', '', base_indent)
+                self.text_buffer.append(stripped_text)
+                return 'ulLists'
+            else:
         while blank.match(text):
             count += 1
             text = text.replace(' ', '', 1)
@@ -428,32 +436,65 @@ class baseObject:
         id_information['optional_title'] = optional_title
         link_id_info[id] = id_information
 
+class inlineObject:
+    # this class will be inherited by inline objects.
+    def expandToHTML(self):
+        #this method will be overrided at each subclasses.
+        raise NotImplementedError
 
-class root(baseObject):
-    def __init__(self, listed_data):
-        self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
-        reset()
+class root(blockObject):
+    pass
         
-class table(baseObject):
+class table(blockObject):
     def __init__(self, listed_data):
         self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
+        self.headers = []
+        self.alignments = []
+        self.contents = []
         reset()
 
-class blockQuote(baseObject):
-    def __init__(self, listed_data):
-        self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
-        reset()
+    def parse(self):
+        i = self.start_index
+        # 2行目の要素によって、|---|---|タイプか---|---タイプかを判別し、場合分けする。
+        formal = re.compile(r'\|(\-{3,})\|')
+        informal = re.compile(r'(\-{3,})\|')
+        if formal.match(self.rawdata[1]):
+            # [1,2,3,4,5][1:-1] = [2,3,4]
+            self.headers = self.rawdata[i].split('|')[1:-1]
+            i += 1
+            self.alignments = self.rawdata[i].split('|')[1:-1]
+            i += 1
+            while i < len(self.rawdata):
+                self.contents.append(self.rawdata[i].split('|')[1:-1])
+        if informal.match(self.rawdata[1]):
+            self.headers = self.rawdata[i].split('|')
+            i += 1
+            self.alignments = self.rawdata[i].split('|')
+            i += 1
+            while i < len(self.rawdata):
+                self.contents.append(self.rawdata[i].split('|'))
+                i += 1
+        # 2行目の要素からalignmentの判断をする
+        left_align = re.compile(r'\:(\-{3,})$')
+        right_align = re.compile(r'(\-{3,})\:$')
+        center_align = re.compile(r'\:(\-{3,})\:$')
+        j = 0
+        while j < len(self.alignments):
+            if left_align.match(self.alignments[j]):
+                self.alignments[j] = 'left'
+            elif right_align.match(self.alignments[j]):
+                self.alignments[j] = 'right'
+            elif center_align.match(self.alignments[j]):
+                self.alignments[j] = 'center'
+            else:
+                self.alignments[j] = None
+            j += 1
 
-class headers(baseObject):
+
+class blockQuote(blockObject):
+    pass
+
+class headers(blockObject):
     def __init__(self, data, level=None):
         if level:
             self.level = level
@@ -463,55 +504,28 @@ class headers(baseObject):
             self.parsed_data = []
             reset()
 
-class taggedBlock(baseObject):
-    def __init__(self, listed_data):
-        self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
-        reset()
-
+class taggedBlock(blockObject):
     def parse(self):
         #We don't parse any words in tagged block.
         return
 
-class ulLists(baseObject):
-    def __init__(self, listed_data):
-        self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
-        reset()
+class ulLists(blockObject):
+    pass
 
-class olLists(baseObject):
-    def __init__(self, listed_data):
-        self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
-        reset()
+class olLists(blockObject):
+    pass
 
-class horizontalRule(baseObject):
+class horizontalRule(blockObject):
     def __init__(self, listed_data):
         pass
 
-class codeBlock(baseObject):
-    def __init__(self, listed_data):
-        self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
-        reset()
+class codeBlock(blockObject):
+    pass
 
-class normalBlock(baseObject):
-    def __init__(self, listed_data):
-        self.rawdata = listed_data
-        self.parsed_data = []
-        self.block_reg = []
-        self.inline_reg = []
-        reset()
+class normalBlock(blockObject):
+    pass
 
-class lineBreak(baseObject):
+class lineBreak(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
@@ -519,10 +533,8 @@ class lineBreak(baseObject):
     def shapeData(self):
         self.rawdata = []
 
-    def parse(self):
-        pass
 
-class links(baseObject):
+class links(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.title = ""
@@ -556,7 +568,7 @@ class links(baseObject):
             if self.id = '':
                 self.id = self.title
 
-class images(baseObject):
+class images(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.title = ""
@@ -590,7 +602,7 @@ class images(baseObject):
             if self.id = '':
                 self.id = self.title
 
-class boldFont(baseObject):
+class boldFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
@@ -599,10 +611,8 @@ class boldFont(baseObject):
         shaped_text = self.rawdata.lstrip('*', 2).rstrip('*', 2)
         self.parsed_data = shaped_text
 
-    def parse(self):
-        pass
 
-class emphasizedFont(baseObject):
+class emphasizedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
@@ -612,10 +622,8 @@ class emphasizedFont(baseObject):
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
 
-    def parse(self):
-        pass
 
-class deletedFont(baseObject):
+class deletedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
@@ -625,10 +633,8 @@ class deletedFont(baseObject):
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
 
-    def parse(self):
-        pass
 
-class inlineCode(baseObject):
+class inlineCode(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
@@ -637,10 +643,4 @@ class inlineCode(baseObject):
         rule = re.compile(r'(`{1,})(?P<content> .*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
         self.parsed_data = shaped_text
-
-    def parse(self):
-        pass
-    
-
-
 
