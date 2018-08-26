@@ -18,7 +18,7 @@ block_rules['BlockQuote'] = re.compile(r"""
     (.*)
 """, re.VERBOSE)
 block_rules['TaggedBlock'] = re.compile(r"""
-    ^(\<p\>)         #start tag
+    \s*(\<p\>)         #start tag
     (.*)
 """, re.VERBOSE)
 block_rules['TaggedBlockEnd'] = re.compile(r"""
@@ -69,11 +69,16 @@ inline_rules['Images'] = re.compile(r"""
 blank_line = re.compile(r"""
     \s*$
 """, re.VERBOSE)
-header_line = re.compile(r"""
-    ^((\-){3,}|
-    (\*){3,}|
-    (\=){3,})
-    /s*$
+header_line_h1 = re.compile(r"""
+    \={3,}
+""", re.VERBOSE)
+header_line_h2 = re.compile(r"""
+    \-{3,}
+""", re.VERBOSE)
+tagged_line = re.compile(r"""
+    \s*(\<p\>)                # start tag
+    (.*)
+    (\< \s* \/ \s* p \s* \>)  # end tag
 """, re.VERBOSE)
 header_block = re.compile(r"""
     (\#+)            #header symbol
@@ -223,6 +228,12 @@ class blockObject:
     def parseFirstTime(self, text):
         print("function is called: {0}".format('parseFirstTime'))
         #block要素のルールに合致するかを判断する。
+        if tagged_line.match(text):
+            print("rule {0} matched".format('tagged_line'))
+            instance = taggedBlock([text])
+            instance.parse()
+            self.parsed_data.append(instance)
+            return 'Blank'
         for rule in block_rules.keys():
             if block_rules[rule].match(text):
                 print("rule {0} matched".format(rule))
@@ -281,8 +292,14 @@ class blockObject:
     def parseNormalBlock(self, text):
         print("function is called: {0}".format('parseNormalBlock'))
         #次の文が---等だった場合、前の要素がh1ヘッダになる
-        if header_line.match(text):
-            instance = headers(self.text_buffer)
+        if header_line_h1.match(text):
+            instance = headers(self.text_buffer[0], level=1)
+            instance.parse()
+            self.parsed_data.append(instance)
+            #次の文の処理は振り出しに戻したいので'Blank'を返す
+            return 'Blank'
+        if header_line_h2.match(text):
+            instance = headers(self.text_buffer[0], level=2)
             instance.parse()
             self.parsed_data.append(instance)
             #次の文の処理は振り出しに戻したいので'Blank'を返す
@@ -371,7 +388,7 @@ class blockObject:
                 return 'ulLists'
             else:
                 # 左端の'*'マークまでトリミングする
-                stripped_text = re.sub(r'\W*[\-\+\*]\s', '', text, 1)
+                stripped_text = re.sub(r'\s*[\-\+\*]\s', '', text, 1)
                 self.text_buffer.append(stripped_text)
                 return 'ulLists'
         elif block_rules['olLists'].match(text):
@@ -412,7 +429,7 @@ class blockObject:
                 return 'olLists'
             else:
                 # 左端の'*'マークまでトリミングする
-                stripped_text = re.sub(r'\W*[0-9]\.\s', '', text, 1)
+                stripped_text = re.sub(r'\s*[0-9]\.\s', '', text, 1)
                 self.text_buffer.append(stripped_text)
                 return 'olLists'
         elif block_rules['ulLists'].match(text):
@@ -539,7 +556,7 @@ class headers(blockObject):
     def __init__(self, data, level=None):
         if level:
             self.level = level
-            self.parsed_data = [data]
+            self.parsed_data = data
         else:
             self.rawdata = data
             self.parsed_data = []

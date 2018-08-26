@@ -1,8 +1,10 @@
-import re
-from parser import MarkdownParser
+import mmparser_test
 
-class Tester(MarkdownParser):
-    def __init__(self, file):
-        with open(file, 'rt') as f:
-            self.rawdata = f.read()
-            self.parsed_object = self.parse() 
+text = """
+# this is a test document.
+
+this is a content.
+"""
+parser = mmparser_test.MarkdownParser()
+# parser.parseText(text)
+parser.parseFile('test_document.md')

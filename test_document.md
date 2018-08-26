@@ -4,6 +4,7 @@
 
 ## Block elements
 This is *emphasized*.
+
 <p> this is *not emphasized*. </p>
 
 ## Automatic escaping for special characters
