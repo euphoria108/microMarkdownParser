@@ -147,6 +147,7 @@ class blockObject:
             {'rule':'Images'         , 'class':images         },
         ]
         self.reset()
+        print("Constructing an object: {0}".format(self.__class__.__name__))
 
     def reset(self):
         self.start_index = 0
@@ -216,6 +217,7 @@ class blockObject:
     #####################################################
 
     def parseFirstTime(self, text):
+        print("function is called: {0}".format('parseFirstTime'))
         #block要素のルールに合致するかを判断する。
         for rule in block_rules.keys():
             if block_rules[rule].match(text):
@@ -239,6 +241,7 @@ class blockObject:
             return 'Normal'
 
     def parseInlineElements(self, text):
+        print("function is called: {0}".format('parseInlineElements'))
         parsed_text = []
         for dit in self.inline_reg:
             if dit['rule'].search(text):
@@ -262,6 +265,7 @@ class blockObject:
         return [text]
 
     def parseNormalBlock(self, text):
+        print("function is called: {0}".format('parseNormalBlock'))
         #次の文が---等だった場合、前の要素がh1ヘッダになる
         if header_line.match(text):
             instance = headers(self.text_buffer)
@@ -280,6 +284,7 @@ class blockObject:
             return 'Normal'
 
     def parseTableBlock(self, text):
+        print("function is called: {0}".format('parseTableBlock'))
         if block_rules['Table'].match(text):
             self.text_buffer.append(text)
             return 'Table'
@@ -292,6 +297,7 @@ class blockObject:
             return -1
 
     def parseBlockQuote(self, text):
+        print("function is called: {0}".format('parseBlockQuote'))
         if block_rules['BlockQuote'].match(text):
             #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
             stripped_text = text.replace('>', '', 1).strip()
@@ -308,6 +314,7 @@ class blockObject:
             return 'BlockQuote'
 
     def parseTaggedBlock(self, text):
+        print("function is called: {0}".format('parseTaggedBlock'))
         if block_rules['TaggedBlockEnd'].match(text):
             instance = taggedBlock(self.text_buffer)
             instance.parse()
@@ -318,6 +325,7 @@ class blockObject:
             return 'TaggedBlock'
 
     def parseCodeBlock(self, text):
+        print("function is called: {0}".format('parseCodeBlock'))
         #まず、parseFirstTime()で処理されていない、text_bufferの1要素目の先頭の空白を取り除く。
         self.text_buffer[0] = self.text_buffer[0].lstrip()
 
@@ -335,6 +343,7 @@ class blockObject:
             return 'CodeBlock'
 
     def parseUlLists(self, text):
+        print("function is called: {0}".format('parseUlLists'))
         #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
@@ -373,6 +382,7 @@ class blockObject:
             return 'ulLists'
 
     def parseOlLists(self, text):
+        print("function is called: {0}".format('parseOlLists'))
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
         if block_rules['olLists'].match(text):
@@ -418,6 +428,7 @@ class blockObject:
 
     @staticmethod
     def countIndent(text):
+        print("function is called: {0}".format('countIndent'))
         blank = re.compile(r'\W')
         count = 0
         while blank.match(text):
@@ -427,6 +438,7 @@ class blockObject:
 
     @staticmethod
     def parseDefinitionBlock(text):
+        print("function is called: {0}".format('parseDefinitionBlock'))
         rule_id = re.compile(r"(\[)(?P<id>[^\[]+)(\]:)")
         rule_option = re.compile(r'([\"\'\(])(?P<option>.*)\1')
         #urlは、元のtextからidとoptional titleを取り除くことによって取得する。
@@ -567,6 +579,7 @@ class lineBreak(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
+        print("Constructing an object: {0}".format(self.__class__.__name__))
         
     def shapeData(self):
         del self.rawdata
@@ -579,6 +592,7 @@ class links(inlineObject):
         self.title = ""
         self.url = None
         self.id = None
+        print("Constructing an object: {0}".format(self.__class__.__name__))
 
     def shapeData(self):
         rule_url = re.compile(r'''
@@ -615,6 +629,7 @@ class images(inlineObject):
         self.title = ""
         self.url = None
         self.id = None
+        print("Constructing an object: {0}".format(self.__class__.__name__))
 
     def shapeData(self):
         rule_url = re.compile(r'''
@@ -649,6 +664,7 @@ class boldFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
+        print("Constructing an object: {0}".format(self.__class__.__name__))
         
     def shapeData(self):
         rule = re.compile(r'(\*\*)(?P<content> .*?)\1')
@@ -662,6 +678,7 @@ class emphasizedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
+        print("Constructing an object: {0}".format(self.__class__.__name__))
         
     def shapeData(self):
         rule = re.compile(r'(\*)(?P<content> .*?)\1')
@@ -675,6 +692,7 @@ class deletedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
+        print("Constructing an object: {0}".format(self.__class__.__name__))
         
     def shapeData(self):
         rule = re.compile(r'(\~\~)(?P<content> .*?)\1')
@@ -688,6 +706,7 @@ class inlineCode(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
+        print("Constructing an object: {0}".format(self.__class__.__name__))
         
     def shapeData(self):
         rule = re.compile(r'(`{1,})(?P<content> .*?)\1')
