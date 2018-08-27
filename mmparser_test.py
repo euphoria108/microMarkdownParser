@@ -13,10 +13,6 @@ block_rules['Table'] = re.compile(r'''
     \|               #symbol that tells this block is a table           
     (.*)
 ''', re.VERBOSE)
-block_rules['BlockQuote'] = re.compile(r"""
-    (&gt;|\>)        #symbol that tells this line is a start of blockquote
-    (.*)
-""", re.VERBOSE)
 block_rules['TaggedBlock'] = re.compile(r"""
     \s*(\<p\>)         #start tag
     (.*)
@@ -81,6 +77,7 @@ tagged_line = re.compile(r"""
     (\< \s* \/ \s* p \s* \>)  # end tag
 """, re.VERBOSE)
 header_block = re.compile(r"""
+    \s*
     (\#+)            #header symbol
     (.*)
 """, re.VERBOSE)
@@ -89,6 +86,10 @@ horizontal_rule = re.compile(r"""
     (\*\s?){3,}|
     (\_\s?){3,})
     \s*$
+""", re.VERBOSE)
+block_quote = re.compile(r"""
+    (&gt;|\>)        #symbol that tells this line is a start of blockquote
+    (.*)
 """, re.VERBOSE)
 definition_block = re.compile(r"""
     (\[)
@@ -126,7 +127,6 @@ class MarkdownParser:
         for line in data.split('\n'):
             splitted_data.append(line)
         #parse関数の処理の都合上、末尾に空行を挿入する。
-        splitted_data.append('')
         self.rootobject.rawdata = splitted_data
         self.rootobject.parse()
     
@@ -156,66 +156,65 @@ class blockObject:
         print("Constructing an object: {0}".format(self.__class__.__name__))
 
     def reset(self):
-        self.start_index = 0
+        self.index = 0
         self.text_buffer = []
 
     def parse(self):
         if len(self.rawdata) == 0:
             return
 
-        i = self.start_index
         previous_line_type = 'Blank'
         
-        while i < len(self.rawdata):
-            print("current index: {}".format(i))
+        while self.index < len(self.rawdata):
+            print("current index: {}".format(self.index))
             if previous_line_type == 'Blank':
                 self.text_buffer = []
-                previous_line_type = self.parseFirstTime(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseFirstTime(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'Normal':
-                previous_line_type = self.parseNormalBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseNormalBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'Table':
-                previous_line_type = self.parseTableBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseTableBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'BlockQuote':
-                previous_line_type = self.parseBlockQuote(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseBlockQuote(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'TaggedBlock':
-                previous_line_type = self.parseTaggedBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseTaggedBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'CodeBlock':
-                previous_line_type = self.parseCodeBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseCodeBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'ulLists':
-                previous_line_type = self.parseUlLists(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseUlLists(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'olLists':
-                previous_line_type = self.parseOlLists(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseOlLists(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             #ブロック要素として処理ができないとき、通常文として処理する。
             if previous_line_type == -1:
-                previous_line_type = self.parseNormalBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseNormalBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
 
-            print("passed. PRT: {0}, index: {1}".format(previous_line_type, i))
+            print("passed. PRT: {0}, index: {1}".format(previous_line_type, self.index))
         del self.rawdata
         return
 
@@ -240,6 +239,12 @@ class blockObject:
                 self.text_buffer.append(text)
                 #次の行の処理のために、現在の行の種類を保存する
                 return rule
+        if block_quote.match(text):
+            print("rule {0} matched".format('block_quote'))
+            #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
+            stripped_text = re.sub(r'\s*(\>\s|\>)', '', text, 1)
+            self.text_buffer.append(stripped_text)
+            return 'BlockQuote'
         if header_block.match(text):
             print("rule {0} matched".format('header_block'))
             instance = headers(text)
@@ -304,7 +309,7 @@ class blockObject:
             self.parsed_data.append(instance)
             #次の文の処理は振り出しに戻したいので'Blank'を返す
             return 'Blank'
-        if blank_line.match(text):
+        if blank_line.match(text) or self.index == len(self.rawdata) - 1:
             for line in self.text_buffer:
                 parsed_line = self.parseInlineElements(line)
                 for item in parsed_line:
@@ -319,7 +324,7 @@ class blockObject:
         if block_rules['Table'].match(text):
             self.text_buffer.append(text)
             return 'Table'
-        elif blank_line.match(text):
+        elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
             instance = table(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -329,13 +334,15 @@ class blockObject:
 
     def parseBlockQuote(self, text):
         print("function is called: {0}".format('parseBlockQuote'))
-        if block_rules['BlockQuote'].match(text):
+        if block_quote.match(text):
             #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
-            stripped_text = text.replace('>', '', 1).strip()
+            stripped_text = re.sub(r'\s*(\>\s|\>)', '', text, 1)
             self.text_buffer.append(stripped_text)
             return 'BlockQuote'
-        if blank_line.match(text):
+        if blank_line.match(text) or self.index == len(self.rawdata) - 1:
             #空行でブロックの終わりを検知する
+            stripped_text = text.replace('>', '', 1)
+            self.text_buffer.append(stripped_text)
             instance = blockQuote(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -364,7 +371,7 @@ class blockObject:
             stripped_text = text.lstrip()
             self.text_buffer.append(stripped_text)
             return 'CodeBlock'
-        elif blank_line.match(text):
+        elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
             instance = codeBlock(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -404,7 +411,7 @@ class blockObject:
                 stripped_text = text.lstrip()
                 self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
                 return 'ulLists'
-        elif blank_line.match(text):
+        elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
             instance = ulLists(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -445,8 +452,8 @@ class blockObject:
                 stripped_text = text.lstrip()
                 self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
                 return 'olLists'
-        elif blank_line.match(text):
-            instance = ulLists(self.text_buffer)
+        elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
+            instance = olLists(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
             return 'Blank'
@@ -512,30 +519,29 @@ class table(blockObject):
 
     def parse(self):
         print('run parse method in table')
-        i = self.start_index
         # 2行目の要素によって、|---|---|タイプか---|---タイプかを判別し、場合分けする。
         formal = re.compile(r'\s*\|')
         informal = re.compile(r'\s*[^ \|]')
         if formal.match(self.rawdata[1]):
             print('type: formal')
             # [1,2,3,4,5][1:-1] = [2,3,4]
-            self.headers = self.rawdata[i].split('|')[1:-1]
-            i += 1
-            self.alignments = self.rawdata[i].split('|')[1:-1]
-            i += 1
-            while i < len(self.rawdata):
-                self.contents.append(self.rawdata[i].split('|')[1:-1])
-                i += 1
+            self.headers = self.rawdata[self.index].split('|')[1:-1]
+            self.index += 1
+            self.alignments = self.rawdata[self.index].split('|')[1:-1]
+            self.index += 1
+            while self.index < len(self.rawdata):
+                self.contents.append(self.rawdata[self.index].split('|')[1:-1])
+                self.index += 1
                 print('now in loop')
         if informal.match(self.rawdata[1]):
             print('type: informal')
-            self.headers = self.rawdata[i].split('|')
-            i += 1
-            self.alignments = self.rawdata[i].split('|')
-            i += 1
-            while i < len(self.rawdata):
-                self.contents.append(self.rawdata[i].split('|'))
-                i += 1
+            self.headers = self.rawdata[self.index].split('|')
+            self.index += 1
+            self.alignments = self.rawdata[self.index].split('|')
+            self.index += 1
+            while self.index < len(self.rawdata):
+                self.contents.append(self.rawdata[self.index].split('|'))
+                self.index += 1
         # 2行目の要素からalignmentの判断をする
         left_align = re.compile(r'\s*\:(\-{3,})\s*$')
         right_align = re.compile(r'(\s*\-{3,})\:\s*$')
@@ -572,7 +578,7 @@ class headers(blockObject):
     def parse(self):
         if self.level == None:
             self.level = self.countSharp(self.rawdata)
-            self.parsed_data = self.rawdata.strip('#').strip()
+            self.parsed_data = self.rawdata.strip().strip('#').strip()
             del self.rawdata
         return
 
