@@ -149,8 +149,8 @@ class blockObject:
             {'rule':inline_rules['EmphasizedFont'] , 'class':emphasizedFont },
             {'rule':inline_rules['DeletedFont']    , 'class':deletedFont    },
             {'rule':inline_rules['InlineCode']     , 'class':inlineCode     },
-            {'rule':inline_rules['Links']          , 'class':links          },
             {'rule':inline_rules['Images']         , 'class':images         },
+            {'rule':inline_rules['Links']          , 'class':links          },
         ]
         self.reset()
         print("Constructing an object: {0}".format(self.__class__.__name__))
@@ -508,13 +508,16 @@ class table(blockObject):
         self.alignments = []
         self.contents = []
         self.reset()
+        print('constructing table class ...')
 
     def parse(self):
+        print('run parse method in table')
         i = self.start_index
         # 2行目の要素によって、|---|---|タイプか---|---タイプかを判別し、場合分けする。
-        formal = re.compile(r'\|(\-{3,})\|')
-        informal = re.compile(r'(\-{3,})\|')
+        formal = re.compile(r'\s*\|')
+        informal = re.compile(r'\s*[^ \|]')
         if formal.match(self.rawdata[1]):
+            print('type: formal')
             # [1,2,3,4,5][1:-1] = [2,3,4]
             self.headers = self.rawdata[i].split('|')[1:-1]
             i += 1
@@ -522,7 +525,10 @@ class table(blockObject):
             i += 1
             while i < len(self.rawdata):
                 self.contents.append(self.rawdata[i].split('|')[1:-1])
+                i += 1
+                print('now in loop')
         if informal.match(self.rawdata[1]):
+            print('type: informal')
             self.headers = self.rawdata[i].split('|')
             i += 1
             self.alignments = self.rawdata[i].split('|')
@@ -531,9 +537,9 @@ class table(blockObject):
                 self.contents.append(self.rawdata[i].split('|'))
                 i += 1
         # 2行目の要素からalignmentの判断をする
-        left_align = re.compile(r'\:(\-{3,})$')
-        right_align = re.compile(r'(\-{3,})\:$')
-        center_align = re.compile(r'\:(\-{3,})\:$')
+        left_align = re.compile(r'\s*\:(\-{3,})\s*$')
+        right_align = re.compile(r'(\s*\-{3,})\:\s*$')
+        center_align = re.compile(r'\s*\:(\-{3,})\:\s*$')
         j = 0
         while j < len(self.alignments):
             if left_align.match(self.alignments[j]):
