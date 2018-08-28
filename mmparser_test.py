@@ -22,7 +22,7 @@ block_rules['TaggedBlockEnd'] = re.compile(r"""
     (\< \s* \/ \s* p \s* \>)    #end tag
 """, re.VERBOSE)
 block_rules['ulLists'] = re.compile(r"""
-    \s*\*\s+(.*)
+    \s*[\*\+\-]\s+(.*)
 """, re.VERBOSE)
 block_rules['olLists'] = re.compile(r"""
     \s*[0-9]+\.\s+(.*)
@@ -310,6 +310,7 @@ class blockObject:
             #次の文の処理は振り出しに戻したいので'Blank'を返す
             return 'Blank'
         if blank_line.match(text) or self.index == len(self.rawdata) - 1:
+            self.text_buffer.append(text)
             for line in self.text_buffer:
                 parsed_line = self.parseInlineElements(line)
                 for item in parsed_line:
@@ -325,6 +326,7 @@ class blockObject:
             self.text_buffer.append(text)
             return 'Table'
         elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
+            self.text_buffer.append(text)
             instance = table(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -372,6 +374,8 @@ class blockObject:
             self.text_buffer.append(stripped_text)
             return 'CodeBlock'
         elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
+            stripped_text = text.lstrip()
+            self.text_buffer.append(stripped_text)
             instance = codeBlock(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -386,82 +390,66 @@ class blockObject:
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
         if block_rules['ulLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
-            # 行頭の'*'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
-            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
-                # 左端をbase_indent分だけトリミングする
-                stripped_text = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
-                return 'ulLists'
-            else:
-                # 左端の'*'マークまでトリミングする
-                stripped_text = re.sub(r'\s*[\-\+\*]\s', '', text, 1)
-                self.text_buffer.append(stripped_text)
-                return 'ulLists'
-        elif block_rules['olLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
-            # 行頭の'1.'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
-            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
-                # 左端をbase_indent分だけトリミングする
-                stripped_text = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
-                return 'ulLists'
-            else:
-                # 左端の空白をトリミングする
-                stripped_text = text.lstrip()
-                self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
-                return 'ulLists'
-        elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
-            instance = ulLists(self.text_buffer)
-            instance.parse()
-            self.parsed_data.append(instance)
-            return 'Blank'
-        else:
-            # その他の場合、現在の行をリストの最後のitemの中身に含める。
-            stripped_text = text.lstrip()
-            self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
+            self.text_buffer.append(text)
             return 'ulLists'
+        elif block_rules['olLists'].match(text):
+            #入れ子のときのみ、現在の行をulListsに含める。
+            if current_line_indent >= base_indent + 2:
+                self.text_buffer.append(text)
+                return 'ulLists'
+            else:
+                #現在の行を処理し直す
+                self.index -= 1
+                return 'Blank'
+        elif blank_line.match(text):
+            self.text_buffer.append(text)
+            return 'ulLists'
+        else:
+            if current_line_indent >= base_indent + 2:
+                #インデントがある場合、前のアイテムの続きだと考える
+                self.text_buffer.append(text)
+                return 'ulLists'
+            else:
+                instance = ulLists(self.text_buffer)
+                instance.parse()
+                self.parsed_data.append(instance)
+                #現在の行を処理し直す
+                self.index -= 1
+                return 'Blank'
+            
 
     def parseOlLists(self, text):
-        print("function is called: {0}".format('parseOlLists'))
+        #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
         if block_rules['olLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する。
-            # 行頭の'1.'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
-            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
-                # 左端をbase_indent分だけトリミングする
-                stripped_text = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
-                return 'olLists'
-            else:
-                # 左端の'*'マークまでトリミングする
-                stripped_text = re.sub(r'\s*[0-9]\.\s', '', text, 1)
-                self.text_buffer.append(stripped_text)
-                return 'olLists'
-        elif block_rules['ulLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する。
-            # 行頭の'*'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
-            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
-                # 左端をbase_indent分だけトリミングする
-                stripped_text = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
-                return 'olLists'
-            else:
-                # 左端の空白をトリミングする
-                stripped_text = text.lstrip()
-                self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
-                return 'olLists'
-        elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
-            instance = olLists(self.text_buffer)
-            instance.parse()
-            self.parsed_data.append(instance)
-            return 'Blank'
-        else:
-            # 左端の空白をトリミングする
-            stripped_text = text.lstrip()
-            self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
+            self.text_buffer.append(text)
             return 'olLists'
+        elif block_rules['ulLists'].match(text):
+            #入れ子のときのみ、現在の行をulListsに含める。
+            if current_line_indent >= base_indent + 2:
+                self.text_buffer.append(text)
+                return 'olLists'
+            else:
+                #現在の行を処理し直す
+                self.index -= 1
+                return 'Blank'
+        elif blank_line.match(text):
+            self.text_buffer.append(text)
+            return 'olLists'
+        else:
+            #
+            if current_line_indent >= base_indent + 2:
+                #インデントがある場合、前のアイテムの続きだと考える
+                self.text_buffer.append(text)
+                return 'olLists'
+            else:
+                instance = olLists(self.text_buffer)
+                instance.parse()
+                self.parsed_data.append(instance)
+                #現在の行を処理し直す
+                self.index -= 1
+                return 'Blank'
 
     def expandToHTML(self):
         #this method will be overrided at each subclasses.
@@ -601,9 +589,114 @@ class taggedBlock(blockObject):
         return
 
 class ulLists(blockObject):
-    pass
-
+    def parse(self):
+        base_indent = self.countIndent(self.rawdata[0])
+        for line in self.rawdata:
+            current_line_indent = self.countIndent(line)
+            if block_rules['ulLists'].match(line):
+                if current_line_indent <= base_indent + 1:
+                    if len(self.text_buffer) > 0:
+                        instance = listItem(self.text_buffer)
+                        instance.parse()
+                        self.parsed_data.append(instance)
+                        self.text_buffer = []
+                    stripped_text = re.sub(r'\s*[\*\+\-]\s', '', line, 1)
+                    self.text_buffer.append(stripped_text)
+                    continue
+                else:
+                    if len(self.text_buffer) > 0:
+                        instance = listItem(self.text_buffer)
+                        instance.parse()
+                        self.parsed_data.append(instance)
+                        self.text_buffer = []
+                    stripped_text = line.replace(' ', '', base_indent)
+                    self.text_buffer.append(stripped_text)
+                    continue
+            elif block_rules['olLists'].match(line):
+                if len(self.text_buffer) > 0:
+                    instance = listItem(self.text_buffer)
+                    instance.parse()
+                    self.parsed_data.append(instance)
+                    self.text_buffer = []
+                stripped_text = line.replace(' ', '', base_indent)
+                self.text_buffer.append(stripped_text)
+                continue
+            elif blank_line.match(line):
+                self.text_buffer.append(line)
+                continue
+            else:
+                if current_line_indent >= base_indent + 2:
+                    stripped_text = line.replace(' ', '', base_indent)
+                    self.text_buffer.append(stripped_text)
+                    continue
+                else:
+                    stripped_text = line.lstrip()
+                    self.text_buffer.append(stripped_text)
+                    continue
+        #最後にtext_bufferが残っていたら処理する。
+        if len(self.text_buffer) > 0:
+            instance = listItem(self.text_buffer)
+            instance.parse()
+            self.parsed_data.append(instance)
+            self.text_buffer = []
+        del self.rawdata
+        return
+            
 class olLists(blockObject):
+    def parse(self):
+        base_indent = self.countIndent(self.rawdata[0])
+        for line in self.rawdata:
+            current_line_indent = self.countIndent(line)
+            if block_rules['olLists'].match(line):
+                if current_line_indent <= base_indent + 1:
+                    if len(self.text_buffer) > 0:
+                        instance = listItem(self.text_buffer)
+                        instance.parse()
+                        self.parsed_data.append(instance)
+                        self.text_buffer = []
+                    stripped_text = re.sub(r'\s*[0-9]+\.\s', '', line, 1)
+                    self.text_buffer.append(stripped_text)
+                    continue
+                else:
+                    if len(self.text_buffer) > 0:
+                        instance = listItem(self.text_buffer)
+                        instance.parse()
+                        self.parsed_data.append(instance)
+                        self.text_buffer = []
+                    stripped_text = line.replace(' ', '', base_indent)
+                    self.text_buffer.append(stripped_text)
+                    continue
+            elif block_rules['ulLists'].match(line):
+                if len(self.text_buffer) > 0:
+                    instance = listItem(self.text_buffer)
+                    instance.parse()
+                    self.parsed_data.append(instance)
+                    self.text_buffer = []
+                stripped_text = line.replace(' ', '', base_indent)
+                self.text_buffer.append(stripped_text)
+                continue
+            elif blank_line.match(line):
+                self.text_buffer.append(line)
+                continue
+            else:
+                if current_line_indent >= base_indent + 2:
+                    stripped_text = line.replace(' ', '', base_indent)
+                    self.text_buffer.append(stripped_text)
+                    continue
+                else:
+                    stripped_text = line.lstrip()
+                    self.text_buffer.append(stripped_text)
+                    continue
+        #最後にtext_bufferが残っていたら処理する。
+        if len(self.text_buffer) > 0:
+            instance = listItem(self.text_buffer)
+            instance.parse()
+            self.parsed_data.append(instance)
+            self.text_buffer = []
+        del self.rawdata
+        return
+
+class listItem(blockObject):
     pass
 
 class horizontalRule(blockObject):
