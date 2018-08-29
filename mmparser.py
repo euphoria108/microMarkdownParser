@@ -5,6 +5,12 @@ from collections import OrderedDict
 #正規表現定義エリア
 #ブロック要素
 block_rules = OrderedDict()
+block_rules['ulLists'] = re.compile(r"""
+    \s*[\*\+\-]\s+
+""", re.VERBOSE)
+block_rules['olLists'] = re.compile(r"""
+    \s*[0-9]+\.\s+
+""", re.VERBOSE)
 block_rules['CodeBlock'] = re.compile(r"""
     \s{4,}\w*
 """, re.VERBOSE)
@@ -13,24 +19,16 @@ block_rules['Table'] = re.compile(r'''
     \|               #symbol that tells this block is a table           
     (.*)
 ''', re.VERBOSE)
-block_rules['BlockQuote'] = re.compile(r"""
-    (&gt;|\>)        #symbol that tells this line is a start of blockquote
-    (.*)
-""", re.VERBOSE)
 block_rules['TaggedBlock'] = re.compile(r"""
-    ^(\<p\>)         #start tag
+    \s*(\<p\>)         #start tag
     (.*)
 """, re.VERBOSE)
 block_rules['TaggedBlockEnd'] = re.compile(r"""
     (.*)
     (\< \s* \/ \s* p \s* \>)    #end tag
 """, re.VERBOSE)
-block_rules['ulLists'] = re.compile(r"""
-    \s*\*\s+(.*)
-""", re.VERBOSE)
-block_rules['olLists'] = re.compile(r"""
-    \s*[0-9]+\.\s+(.*)
-""", re.VERBOSE)
+
+
 
 #インライン要素
 inline_rules = OrderedDict()
@@ -80,6 +78,7 @@ tagged_line = re.compile(r"""
     (\< \s* \/ \s* p \s* \>)  # end tag
 """, re.VERBOSE)
 header_block = re.compile(r"""
+    \s*
     (\#+)            #header symbol
     (.*)
 """, re.VERBOSE)
@@ -88,6 +87,10 @@ horizontal_rule = re.compile(r"""
     (\*\s?){3,}|
     (\_\s?){3,})
     \s*$
+""", re.VERBOSE)
+block_quote = re.compile(r"""
+    (&gt;|\>)        #symbol that tells this line is a start of blockquote
+    (.*)
 """, re.VERBOSE)
 definition_block = re.compile(r"""
     (\[)
@@ -125,7 +128,6 @@ class MarkdownParser:
         for line in data.split('\n'):
             splitted_data.append(line)
         #parse関数の処理の都合上、末尾に空行を挿入する。
-        splitted_data.append('')
         self.rootobject.rawdata = splitted_data
         self.rootobject.parse()
     
@@ -152,65 +154,83 @@ class blockObject:
             {'rule':inline_rules['Links']          , 'class':links          },
         ]
         self.reset()
+        
 
     def reset(self):
-        self.start_index = 0
+        self.index = 0
         self.text_buffer = []
 
     def parse(self):
         if len(self.rawdata) == 0:
             return
 
-        i = self.start_index
         previous_line_type = 'Blank'
         
-        while i < len(self.rawdata):
+        while self.index < len(self.rawdata):
+            
             if previous_line_type == 'Blank':
                 self.text_buffer = []
-                previous_line_type = self.parseFirstTime(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseFirstTime(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'Normal':
-                previous_line_type = self.parseNormalBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseNormalBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'Table':
-                previous_line_type = self.parseTableBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseTableBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'BlockQuote':
-                previous_line_type = self.parseBlockQuote(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseBlockQuote(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'TaggedBlock':
-                previous_line_type = self.parseTaggedBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseTaggedBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'CodeBlock':
-                previous_line_type = self.parseCodeBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseCodeBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'ulLists':
-                previous_line_type = self.parseUlLists(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseUlLists(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             if previous_line_type == 'olLists':
-                previous_line_type = self.parseOlLists(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseOlLists(self.rawdata[self.index])
+                self.index += 1
                 continue
 
             #ブロック要素として処理ができないとき、通常文として処理する。
             if previous_line_type == -1:
-                previous_line_type = self.parseNormalBlock(self.rawdata[i])
-                i += 1
+                previous_line_type = self.parseNormalBlock(self.rawdata[self.index])
+                self.index += 1
                 continue
+
+            
+        # text_bufferに残ってる場合の処理
+        if len(self.text_buffer) > 0:
+            if previous_line_type == 'Normal':
+                self.parseNormalBlock('')
+            if previous_line_type == 'Table':
+                self.parseTableBlock('')
+            if previous_line_type == 'BlockQuote':
+                self.parseBlockQuote('')
+            if previous_line_type == 'CodeBlock':
+                self.parseCodeBlock('')
+            if previous_line_type == 'ulLists':
+                #空白、箇条書き以外の文字列を渡す
+                self.parseUlLists('a')
+            if previous_line_type == 'olLists':
+                self.parseOlLists('a')
         del self.rawdata
         return
 
@@ -221,42 +241,57 @@ class blockObject:
     #####################################################
 
     def parseFirstTime(self, text):
+        
         #block要素のルールに合致するかを判断する。
         if tagged_line.match(text):
-            print("rule {0} matched".format('tagged_line'))
+            
             instance = taggedBlock([text])
             instance.parse()
             self.parsed_data.append(instance)
             return 'Blank'
         for rule in block_rules.keys():
             if block_rules[rule].match(text):
+                
                 self.text_buffer.append(text)
                 #次の行の処理のために、現在の行の種類を保存する
                 return rule
+        if block_quote.match(text):
+            
+            #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
+            stripped_text = re.sub(r'\s*(\>\s|\>)', '', text, 1)
+            self.text_buffer.append(stripped_text)
+            return 'BlockQuote'
         if header_block.match(text):
+            
             instance = headers(text)
             instance.parse()
             self.parsed_data.append(instance)
             return 'Blank'
         if horizontal_rule.match(text):
+            
             self.parsed_data.append(horizontalRule([]))
             return 'Blank'
         if definition_block.match(text):
+            
             self.parseDefinitionBlock(text)
             return 'Blank'
         #block要素のいずれにも合致しなかった場合
         if not blank_line.match(text):
+            
             self.text_buffer.append(text)
             return 'Normal'
         else:
-            print("rule {0} matched".format('blank'))
+            
             return 'Blank'
+        
 
     def parseInlineElements(self, text):
+        
         parsed_text = []
         for dit in self.inline_reg:
             if dit['rule'].search(text):
                 element = dit['rule'].search(text).group()
+                
                 instance = dit['class'](element)
                 instance.shapeData()
                 #（elementsを整形する処理は個別のクラスで実装）
@@ -276,6 +311,7 @@ class blockObject:
         return [text]
 
     def parseNormalBlock(self, text):
+        
         #次の文が---等だった場合、前の要素がh1ヘッダになる
         if header_line_h1.match(text):
             instance = headers(self.text_buffer[0], level=1)
@@ -289,7 +325,8 @@ class blockObject:
             self.parsed_data.append(instance)
             #次の文の処理は振り出しに戻したいので'Blank'を返す
             return 'Blank'
-        if blank_line.match(text):
+        if blank_line.match(text) or self.index >= len(self.rawdata) - 1:
+            self.text_buffer.append(text)
             for line in self.text_buffer:
                 parsed_line = self.parseInlineElements(line)
                 for item in parsed_line:
@@ -300,10 +337,12 @@ class blockObject:
             return 'Normal'
 
     def parseTableBlock(self, text):
+        
         if block_rules['Table'].match(text):
             self.text_buffer.append(text)
             return 'Table'
-        elif blank_line.match(text):
+        elif blank_line.match(text) or self.index >= len(self.rawdata) - 1:
+            self.text_buffer.append(text)
             instance = table(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -312,13 +351,16 @@ class blockObject:
             return -1
 
     def parseBlockQuote(self, text):
-        if block_rules['BlockQuote'].match(text):
+        
+        if block_quote.match(text):
             #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
-            stripped_text = text.replace('>', '', 1).strip()
+            stripped_text = re.sub(r'\s*(\>\s|\>)', '', text, 1)
             self.text_buffer.append(stripped_text)
             return 'BlockQuote'
-        if blank_line.match(text):
+        if blank_line.match(text) or self.index >= len(self.rawdata) - 1:
             #空行でブロックの終わりを検知する
+            stripped_text = text.replace('>', '', 1)
+            self.text_buffer.append(stripped_text)
             instance = blockQuote(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -328,6 +370,7 @@ class blockObject:
             return 'BlockQuote'
 
     def parseTaggedBlock(self, text):
+        
         if block_rules['TaggedBlockEnd'].match(text):
             instance = taggedBlock(self.text_buffer)
             instance.parse()
@@ -338,6 +381,7 @@ class blockObject:
             return 'TaggedBlock'
 
     def parseCodeBlock(self, text):
+        
         #まず、parseFirstTime()で処理されていない、text_bufferの1要素目の先頭の空白を取り除く。
         self.text_buffer[0] = self.text_buffer[0].lstrip()
 
@@ -345,7 +389,9 @@ class blockObject:
             stripped_text = text.lstrip()
             self.text_buffer.append(stripped_text)
             return 'CodeBlock'
-        elif blank_line.match(text):
+        elif blank_line.match(text) or self.index >= len(self.rawdata) - 1:
+            stripped_text = text.lstrip()
+            self.text_buffer.append(stripped_text)
             instance = codeBlock(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -355,85 +401,92 @@ class blockObject:
             return 'CodeBlock'
 
     def parseUlLists(self, text):
+        
         #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
         if block_rules['ulLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
-            # 行頭の'*'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
-            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
-                # 左端をbase_indent分だけトリミングする
-                stripped_text = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
-                return 'ulLists'
-            else:
-                # 左端の'*'マークまでトリミングする
-                stripped_text = re.sub(r'\s*[\-\+\*]\s', '', text, 1)
-                self.text_buffer.append(stripped_text)
-                return 'ulLists'
+            self.text_buffer.append(text)
+            return 'ulLists'
         elif block_rules['olLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する
-            # 行頭の'1.'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
-            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
-                # 左端をbase_indent分だけトリミングする
-                stripped_text = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
+            #入れ子のときのみ、現在の行をulListsに含める。
+            if current_line_indent >= base_indent + 2:
+                self.text_buffer.append(text)
                 return 'ulLists'
             else:
-                # 左端の空白をトリミングする
-                stripped_text = text.lstrip()
-                self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
-                return 'ulLists'
+                instance = ulLists(self.text_buffer)
+                
+                instance.parse()
+                self.parsed_data.append(instance)
+                #現在の行を処理し直す
+                self.index -= 1
+                return 'Blank'
         elif blank_line.match(text):
+            self.text_buffer.append(text)
+            return 'ulLists'
+        elif self.index >= len(self.rawdata) - 1:
             instance = ulLists(self.text_buffer)
+            
             instance.parse()
             self.parsed_data.append(instance)
-            return 'Blank'
         else:
-            # その他の場合、現在の行をリストの最後のitemの中身に含める。
-            stripped_text = text.lstrip()
-            self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
-            return 'ulLists'
+            if current_line_indent >= base_indent + 2:
+                #インデントがある場合、前のアイテムの続きだと考える
+                self.text_buffer.append(text)
+                return 'ulLists'
+            else:
+                instance = ulLists(self.text_buffer)
+                
+                instance.parse()
+                self.parsed_data.append(instance)
+                #現在の行を処理し直す
+                self.index -= 1
+                return 'Blank'
+            
 
     def parseOlLists(self, text):
+        
+        #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
         if block_rules['olLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する。
-            # 行頭の'1.'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
-            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
-                # 左端をbase_indent分だけトリミングする
-                stripped_text = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
-                return 'olLists'
-            else:
-                # 左端の'*'マークまでトリミングする
-                stripped_text = re.sub(r'\s*[0-9]\.\s', '', text, 1)
-                self.text_buffer.append(stripped_text)
-                return 'olLists'
+            self.text_buffer.append(text)
+            return 'olLists'
         elif block_rules['ulLists'].match(text):
-            # 現在のインデントより2つ以上5つ以下インデントが大きくなったとき、入れ子のリストだと認識する。
-            # 行頭の'*'を残すことによって、子objectのparse関数がリストだと認識できるようにする。
-            if current_line_indent >= base_indent + 2 and current_line_indent <= base_indent + 5:
-                # 左端をbase_indent分だけトリミングする
-                stripped_text = text.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
+            #入れ子のときのみ、現在の行をulListsに含める。
+            if current_line_indent >= base_indent + 2:
+                self.text_buffer.append(text)
                 return 'olLists'
             else:
-                # 左端の空白をトリミングする
-                stripped_text = text.lstrip()
-                self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
-                return 'olLists'
+                instance = olLists(self.text_buffer)
+                
+                instance.parse()
+                self.parsed_data.append(instance)
+                #現在の行を処理し直す
+                self.index -= 1
+                return 'Blank'
         elif blank_line.match(text):
-            instance = ulLists(self.text_buffer)
+            self.text_buffer.append(text)
+            return 'olLists'
+        elif self.index >= len(self.rawdata) - 1:
+            instance = olLists(self.text_buffer)
+            
             instance.parse()
             self.parsed_data.append(instance)
-            return 'Blank'
         else:
-            # 左端の空白をトリミングする
-            stripped_text = text.lstrip()
-            self.text_buffer[-1] = self.text_buffer[-1] + ' ' + stripped_text
-            return 'olLists'
+            #
+            if current_line_indent >= base_indent + 2:
+                #インデントがある場合、前のアイテムの続きだと考える
+                self.text_buffer.append(text)
+                return 'olLists'
+            else:
+                instance = olLists(self.text_buffer)
+                
+                instance.parse()
+                self.parsed_data.append(instance)
+                #現在の行を処理し直す
+                self.index -= 1
+                return 'Blank'
 
     def expandToHTML(self):
         #this method will be overrided at each subclasses.
@@ -441,6 +494,7 @@ class blockObject:
 
     @staticmethod
     def countIndent(text):
+        
         blank = re.compile(r'\s')
         count = 0
         while blank.match(text):
@@ -450,6 +504,7 @@ class blockObject:
 
     @staticmethod
     def parseDefinitionBlock(text):
+        
         rule_id = re.compile(r"(\[)(?P<id>[^\[]+)(\]:)")
         rule_option = re.compile(r'([\"\'\(])(?P<option>.*)\1')
         #urlは、元のtextからidとoptional titleを取り除くことによって取得する。
@@ -485,29 +540,33 @@ class table(blockObject):
         self.alignments = []
         self.contents = []
         self.reset()
+        
 
     def parse(self):
-        i = self.start_index
+        
         # 2行目の要素によって、|---|---|タイプか---|---タイプかを判別し、場合分けする。
         formal = re.compile(r'\s*\|')
         informal = re.compile(r'\s*[^ \|]')
         if formal.match(self.rawdata[1]):
+            
             # [1,2,3,4,5][1:-1] = [2,3,4]
-            self.headers = self.rawdata[i].split('|')[1:-1]
-            i += 1
-            self.alignments = self.rawdata[i].split('|')[1:-1]
-            i += 1
-            while i < len(self.rawdata):
-                self.contents.append(self.rawdata[i].split('|')[1:-1])
-                i += 1
+            self.headers = self.rawdata[self.index].split('|')[1:-1]
+            self.index += 1
+            self.alignments = self.rawdata[self.index].split('|')[1:-1]
+            self.index += 1
+            while self.index < len(self.rawdata):
+                self.contents.append(self.rawdata[self.index].split('|')[1:-1])
+                self.index += 1
+                
         if informal.match(self.rawdata[1]):
-            self.headers = self.rawdata[i].split('|')
-            i += 1
-            self.alignments = self.rawdata[i].split('|')
-            i += 1
-            while i < len(self.rawdata):
-                self.contents.append(self.rawdata[i].split('|'))
-                i += 1
+            
+            self.headers = self.rawdata[self.index].split('|')
+            self.index += 1
+            self.alignments = self.rawdata[self.index].split('|')
+            self.index += 1
+            while self.index < len(self.rawdata):
+                self.contents.append(self.rawdata[self.index].split('|'))
+                self.index += 1
         # 2行目の要素からalignmentの判断をする
         left_align = re.compile(r'\s*\:(\-{3,})\s*$')
         right_align = re.compile(r'(\s*\-{3,})\:\s*$')
@@ -544,7 +603,7 @@ class headers(blockObject):
     def parse(self):
         if self.level == None:
             self.level = self.countSharp(self.rawdata)
-            self.parsed_data = self.rawdata.strip('#').strip()
+            self.parsed_data = self.rawdata.strip().strip('#').strip()
             del self.rawdata
         return
 
@@ -567,9 +626,150 @@ class taggedBlock(blockObject):
         return
 
 class ulLists(blockObject):
-    pass
+    def reset(self):
+        self.index = 0
+        self.base_buffer = []
+        self.nested_buffer = []
 
+    def parse(self):
+        base_indent = self.countIndent(self.rawdata[0])
+        for line in self.rawdata:
+            current_line_indent = self.countIndent(line)
+            if block_rules['ulLists'].match(line):
+                if current_line_indent <= base_indent + 1:
+                    if len(self.nested_buffer) > 0:
+                        instance = listItem(self.nested_buffer)
+                        
+                        instance.parse()
+                        self.parsed_data.append(instance)
+                        self.nested_buffer = []
+                    stripped_text = re.sub(r'\s*[\*\+\-]\s', '', line, 1)
+                    self.base_buffer.append(stripped_text)
+                    continue
+                else:
+                    if len(self.base_buffer) > 0:
+                        instance = listItem(self.base_buffer)
+                        
+                        instance.parse()
+                        self.parsed_data.append(instance)
+                        self.base_buffer = []
+                    stripped_text = line.replace(' ', '', base_indent)
+                    self.nested_buffer.append(stripped_text)
+                    continue
+            elif block_rules['olLists'].match(line):
+                if len(self.base_buffer) > 0:
+                    instance = listItem(self.base_buffer)
+                    
+                    instance.parse()
+                    self.parsed_data.append(instance)
+                    self.base_buffer = []
+                stripped_text = line.replace(' ', '', base_indent)
+                self.nested_buffer.append(stripped_text)
+                continue
+            elif blank_line.match(line):
+                if len(self.base_buffer) > 0:
+                    self.base_buffer.append(line)
+                else:
+                    self.nested_buffer.append(line)
+                continue
+            else:
+                if current_line_indent >= base_indent + 2:
+                    stripped_text = line.replace(' ', '', base_indent)
+                    self.nested_buffer.append(stripped_text)
+                    continue
+                else:
+                    stripped_text = line.lstrip()
+                    self.base_buffer.append(stripped_text)
+                    continue
+        #最後にtext_bufferが残っていたら処理する。
+        if len(self.base_buffer) > 0:
+            instance = listItem(self.base_buffer)
+            
+            instance.parse()
+            self.parsed_data.append(instance)
+            self.base_buffer = []
+        if len(self.nested_buffer) > 0:
+            instance = listItem(self.nested_buffer)
+            
+            instance.parse()
+            self.parsed_data.append(instance)
+            self.nested_buffer = []
+        del self.rawdata
+        return
+            
 class olLists(blockObject):
+    def reset(self):
+        self.index = 0
+        self.base_buffer = []
+        self.nested_buffer = []
+
+    def parse(self):
+        base_indent = self.countIndent(self.rawdata[0])
+        for line in self.rawdata:
+            current_line_indent = self.countIndent(line)
+            if block_rules['olLists'].match(line):
+                if current_line_indent <= base_indent + 1:
+                    if len(self.nested_buffer) > 0:
+                        instance = listItem(self.nested_buffer)
+                        
+                        instance.parse()
+                        self.parsed_data.append(instance)
+                        self.nested_buffer = []
+                    stripped_text = re.sub(r'\s*[0-9]+\.\s', '', line, 1)
+                    self.base_buffer.append(stripped_text)
+                    continue
+                else:
+                    if len(self.base_buffer) > 0:
+                        instance = listItem(self.base_buffer)
+                        
+                        instance.parse()
+                        self.parsed_data.append(instance)
+                        self.base_buffer = []
+                    stripped_text = line.replace(' ', '', base_indent)
+                    self.nested_buffer.append(stripped_text)
+                    continue
+            elif block_rules['ulLists'].match(line):
+                if len(self.base_buffer) > 0:
+                    instance = listItem(self.base_buffer)
+                    
+                    instance.parse()
+                    self.parsed_data.append(instance)
+                    self.base_buffer = []
+                stripped_text = line.replace(' ', '', base_indent)
+                self.nested_buffer.append(stripped_text)
+                continue
+            elif blank_line.match(line):
+                if len(self.base_buffer) > 0:
+                    self.base_buffer.append(line)
+                else:
+                    self.nested_buffer.append(line)
+                continue
+            else:
+                if current_line_indent >= base_indent + 2:
+                    stripped_text = line.replace(' ', '', base_indent)
+                    self.nested_buffer.append(stripped_text)
+                    continue
+                else:
+                    stripped_text = line.lstrip()
+                    self.base_buffer.append(stripped_text)
+                    continue
+        #最後にtext_bufferが残っていたら処理する。
+        if len(self.base_buffer) > 0:
+            instance = listItem(self.base_buffer)
+            
+            instance.parse()
+            self.parsed_data.append(instance)
+            self.base_buffer = []
+        if len(self.nested_buffer) > 0:
+            instance = listItem(self.nested_buffer)
+            
+            instance.parse()
+            self.parsed_data.append(instance)
+            self.nested_buffer = []
+        del self.rawdata
+        return
+
+class listItem(blockObject):
     pass
 
 class horizontalRule(blockObject):
@@ -592,6 +792,7 @@ class lineBreak(inlineObject):
         self.rawdata = string
         self.parsed_data = []
         
+        
     def shapeData(self):
         del self.rawdata
         return
@@ -603,6 +804,7 @@ class links(inlineObject):
         self.title = ""
         self.url = None
         self.id = None
+        
 
     def shapeData(self):
         rule_url = re.compile(r'''
@@ -639,6 +841,7 @@ class images(inlineObject):
         self.title = ""
         self.url = None
         self.id = None
+        
 
     def shapeData(self):
         rule_url = re.compile(r'''
@@ -674,6 +877,7 @@ class boldFont(inlineObject):
         self.rawdata = string
         self.parsed_data = []
         
+        
     def shapeData(self):
         rule = re.compile(r'(\*\*|\_\_)(?P<content>.*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
@@ -686,6 +890,7 @@ class emphasizedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
+        
         
     def shapeData(self):
         rule = re.compile(r'(\*|\_)(?P<content>.*?)\1')
@@ -700,6 +905,7 @@ class deletedFont(inlineObject):
         self.rawdata = string
         self.parsed_data = []
         
+        
     def shapeData(self):
         rule = re.compile(r'(\~\~)(?P<content>.*?)\1')
         shaped_text = rule.search(self.rawdata).group('content').strip()
@@ -712,6 +918,7 @@ class inlineCode(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
+        
         
     def shapeData(self):
         rule = re.compile(r'(`{1,})(?P<content>.*?)\1')

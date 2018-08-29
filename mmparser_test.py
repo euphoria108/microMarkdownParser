@@ -5,6 +5,12 @@ from collections import OrderedDict
 #正規表現定義エリア
 #ブロック要素
 block_rules = OrderedDict()
+block_rules['ulLists'] = re.compile(r"""
+    \s*[\*\+\-]\s+
+""", re.VERBOSE)
+block_rules['olLists'] = re.compile(r"""
+    \s*[0-9]+\.\s+
+""", re.VERBOSE)
 block_rules['CodeBlock'] = re.compile(r"""
     \s{4,}\w*
 """, re.VERBOSE)
@@ -21,12 +27,7 @@ block_rules['TaggedBlockEnd'] = re.compile(r"""
     (.*)
     (\< \s* \/ \s* p \s* \>)    #end tag
 """, re.VERBOSE)
-block_rules['ulLists'] = re.compile(r"""
-    \s*[\*\+\-]\s+(.*)
-""", re.VERBOSE)
-block_rules['olLists'] = re.compile(r"""
-    \s*[0-9]+\.\s+(.*)
-""", re.VERBOSE)
+
 
 
 #インライン要素
@@ -166,7 +167,7 @@ class blockObject:
         previous_line_type = 'Blank'
         
         while self.index < len(self.rawdata):
-            print("current index: {}".format(self.index))
+            print("current index: {0}, previous_line_type: {1}".format(self.index, previous_line_type))
             if previous_line_type == 'Blank':
                 self.text_buffer = []
                 previous_line_type = self.parseFirstTime(self.rawdata[self.index])
@@ -215,6 +216,21 @@ class blockObject:
                 continue
 
             print("passed. PRT: {0}, index: {1}".format(previous_line_type, self.index))
+        # text_bufferに残ってる場合の処理
+        if len(self.text_buffer) > 0:
+            if previous_line_type == 'Normal':
+                self.parseNormalBlock('')
+            if previous_line_type == 'Table':
+                self.parseTableBlock('')
+            if previous_line_type == 'BlockQuote':
+                self.parseBlockQuote('')
+            if previous_line_type == 'CodeBlock':
+                self.parseCodeBlock('')
+            if previous_line_type == 'ulLists':
+                #空白、箇条書き以外の文字列を渡す
+                self.parseUlLists('a')
+            if previous_line_type == 'olLists':
+                self.parseOlLists('a')
         del self.rawdata
         return
 
@@ -225,7 +241,7 @@ class blockObject:
     #####################################################
 
     def parseFirstTime(self, text):
-        print("function is called: {0}".format('parseFirstTime'))
+        print("function is called: {0}, argument: {1}".format('parseFirstTime', text))
         #block要素のルールに合致するかを判断する。
         if tagged_line.match(text):
             print("rule {0} matched".format('tagged_line'))
@@ -309,7 +325,7 @@ class blockObject:
             self.parsed_data.append(instance)
             #次の文の処理は振り出しに戻したいので'Blank'を返す
             return 'Blank'
-        if blank_line.match(text) or self.index == len(self.rawdata) - 1:
+        if blank_line.match(text) or self.index >= len(self.rawdata) - 1:
             self.text_buffer.append(text)
             for line in self.text_buffer:
                 parsed_line = self.parseInlineElements(line)
@@ -325,7 +341,7 @@ class blockObject:
         if block_rules['Table'].match(text):
             self.text_buffer.append(text)
             return 'Table'
-        elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
+        elif blank_line.match(text) or self.index >= len(self.rawdata) - 1:
             self.text_buffer.append(text)
             instance = table(self.text_buffer)
             instance.parse()
@@ -341,7 +357,7 @@ class blockObject:
             stripped_text = re.sub(r'\s*(\>\s|\>)', '', text, 1)
             self.text_buffer.append(stripped_text)
             return 'BlockQuote'
-        if blank_line.match(text) or self.index == len(self.rawdata) - 1:
+        if blank_line.match(text) or self.index >= len(self.rawdata) - 1:
             #空行でブロックの終わりを検知する
             stripped_text = text.replace('>', '', 1)
             self.text_buffer.append(stripped_text)
@@ -365,7 +381,7 @@ class blockObject:
             return 'TaggedBlock'
 
     def parseCodeBlock(self, text):
-        print("function is called: {0}".format('parseCodeBlock'))
+        print("function is called: {0}, argument: {1}".format('parseCodeBlock', text))
         #まず、parseFirstTime()で処理されていない、text_bufferの1要素目の先頭の空白を取り除く。
         self.text_buffer[0] = self.text_buffer[0].lstrip()
 
@@ -373,7 +389,7 @@ class blockObject:
             stripped_text = text.lstrip()
             self.text_buffer.append(stripped_text)
             return 'CodeBlock'
-        elif blank_line.match(text) or self.index == len(self.rawdata) - 1:
+        elif blank_line.match(text) or self.index >= len(self.rawdata) - 1:
             stripped_text = text.lstrip()
             self.text_buffer.append(stripped_text)
             instance = codeBlock(self.text_buffer)
@@ -385,7 +401,7 @@ class blockObject:
             return 'CodeBlock'
 
     def parseUlLists(self, text):
-        print("function is called: {0}".format('parseUlLists'))
+        print("function is called: {0}, argument: {1}".format('parseUlLists', text))
         #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
@@ -398,12 +414,21 @@ class blockObject:
                 self.text_buffer.append(text)
                 return 'ulLists'
             else:
+                instance = ulLists(self.text_buffer)
+                print('ulLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
+                instance.parse()
+                self.parsed_data.append(instance)
                 #現在の行を処理し直す
                 self.index -= 1
                 return 'Blank'
         elif blank_line.match(text):
             self.text_buffer.append(text)
             return 'ulLists'
+        elif self.index >= len(self.rawdata) - 1:
+            instance = ulLists(self.text_buffer)
+            print('ulLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
+            instance.parse()
+            self.parsed_data.append(instance)
         else:
             if current_line_indent >= base_indent + 2:
                 #インデントがある場合、前のアイテムの続きだと考える
@@ -411,6 +436,7 @@ class blockObject:
                 return 'ulLists'
             else:
                 instance = ulLists(self.text_buffer)
+                print('ulLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -419,6 +445,7 @@ class blockObject:
             
 
     def parseOlLists(self, text):
+        print("function is called: {0}, argument: {1}".format('parseOlLists', text))
         #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
@@ -431,12 +458,21 @@ class blockObject:
                 self.text_buffer.append(text)
                 return 'olLists'
             else:
+                instance = olLists(self.text_buffer)
+                print('olLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
+                instance.parse()
+                self.parsed_data.append(instance)
                 #現在の行を処理し直す
                 self.index -= 1
                 return 'Blank'
         elif blank_line.match(text):
             self.text_buffer.append(text)
             return 'olLists'
+        elif self.index >= len(self.rawdata) - 1:
+            instance = olLists(self.text_buffer)
+            print('olLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
+            instance.parse()
+            self.parsed_data.append(instance)
         else:
             #
             if current_line_indent >= base_indent + 2:
@@ -445,6 +481,7 @@ class blockObject:
                 return 'olLists'
             else:
                 instance = olLists(self.text_buffer)
+                print('olLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -589,110 +626,146 @@ class taggedBlock(blockObject):
         return
 
 class ulLists(blockObject):
+    def reset(self):
+        self.index = 0
+        self.base_buffer = []
+        self.nested_buffer = []
+
     def parse(self):
         base_indent = self.countIndent(self.rawdata[0])
         for line in self.rawdata:
             current_line_indent = self.countIndent(line)
             if block_rules['ulLists'].match(line):
                 if current_line_indent <= base_indent + 1:
-                    if len(self.text_buffer) > 0:
-                        instance = listItem(self.text_buffer)
+                    if len(self.nested_buffer) > 0:
+                        instance = listItem(self.nested_buffer)
+                        print('listItem object created. rawdata is inherited: {0}'.format(self.nested_buffer))
                         instance.parse()
                         self.parsed_data.append(instance)
-                        self.text_buffer = []
+                        self.nested_buffer = []
                     stripped_text = re.sub(r'\s*[\*\+\-]\s', '', line, 1)
-                    self.text_buffer.append(stripped_text)
+                    self.base_buffer.append(stripped_text)
                     continue
                 else:
-                    if len(self.text_buffer) > 0:
-                        instance = listItem(self.text_buffer)
+                    if len(self.base_buffer) > 0:
+                        instance = listItem(self.base_buffer)
+                        print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
                         instance.parse()
                         self.parsed_data.append(instance)
-                        self.text_buffer = []
+                        self.base_buffer = []
                     stripped_text = line.replace(' ', '', base_indent)
-                    self.text_buffer.append(stripped_text)
+                    self.nested_buffer.append(stripped_text)
                     continue
             elif block_rules['olLists'].match(line):
-                if len(self.text_buffer) > 0:
-                    instance = listItem(self.text_buffer)
+                if len(self.base_buffer) > 0:
+                    instance = listItem(self.base_buffer)
+                    print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
                     instance.parse()
                     self.parsed_data.append(instance)
-                    self.text_buffer = []
+                    self.base_buffer = []
                 stripped_text = line.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
+                self.nested_buffer.append(stripped_text)
                 continue
             elif blank_line.match(line):
-                self.text_buffer.append(line)
+                if len(self.base_buffer) > 0:
+                    self.base_buffer.append(line)
+                else:
+                    self.nested_buffer.append(line)
                 continue
             else:
                 if current_line_indent >= base_indent + 2:
                     stripped_text = line.replace(' ', '', base_indent)
-                    self.text_buffer.append(stripped_text)
+                    self.nested_buffer.append(stripped_text)
                     continue
                 else:
                     stripped_text = line.lstrip()
-                    self.text_buffer.append(stripped_text)
+                    self.base_buffer.append(stripped_text)
                     continue
         #最後にtext_bufferが残っていたら処理する。
-        if len(self.text_buffer) > 0:
-            instance = listItem(self.text_buffer)
+        if len(self.base_buffer) > 0:
+            instance = listItem(self.base_buffer)
+            print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
             instance.parse()
             self.parsed_data.append(instance)
-            self.text_buffer = []
+            self.base_buffer = []
+        if len(self.nested_buffer) > 0:
+            instance = listItem(self.nested_buffer)
+            print('listItem object created. rawdata is inherited: {0}'.format(self.nested_buffer))
+            instance.parse()
+            self.parsed_data.append(instance)
+            self.nested_buffer = []
         del self.rawdata
         return
             
 class olLists(blockObject):
+    def reset(self):
+        self.index = 0
+        self.base_buffer = []
+        self.nested_buffer = []
+
     def parse(self):
         base_indent = self.countIndent(self.rawdata[0])
         for line in self.rawdata:
             current_line_indent = self.countIndent(line)
             if block_rules['olLists'].match(line):
                 if current_line_indent <= base_indent + 1:
-                    if len(self.text_buffer) > 0:
-                        instance = listItem(self.text_buffer)
+                    if len(self.nested_buffer) > 0:
+                        instance = listItem(self.nested_buffer)
+                        print('listItem object created. rawdata is inherited: {0}'.format(self.nested_buffer))
                         instance.parse()
                         self.parsed_data.append(instance)
-                        self.text_buffer = []
+                        self.nested_buffer = []
                     stripped_text = re.sub(r'\s*[0-9]+\.\s', '', line, 1)
-                    self.text_buffer.append(stripped_text)
+                    self.base_buffer.append(stripped_text)
                     continue
                 else:
-                    if len(self.text_buffer) > 0:
-                        instance = listItem(self.text_buffer)
+                    if len(self.base_buffer) > 0:
+                        instance = listItem(self.base_buffer)
+                        print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
                         instance.parse()
                         self.parsed_data.append(instance)
-                        self.text_buffer = []
+                        self.base_buffer = []
                     stripped_text = line.replace(' ', '', base_indent)
-                    self.text_buffer.append(stripped_text)
+                    self.nested_buffer.append(stripped_text)
                     continue
             elif block_rules['ulLists'].match(line):
-                if len(self.text_buffer) > 0:
-                    instance = listItem(self.text_buffer)
+                if len(self.base_buffer) > 0:
+                    instance = listItem(self.base_buffer)
+                    print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
                     instance.parse()
                     self.parsed_data.append(instance)
-                    self.text_buffer = []
+                    self.base_buffer = []
                 stripped_text = line.replace(' ', '', base_indent)
-                self.text_buffer.append(stripped_text)
+                self.nested_buffer.append(stripped_text)
                 continue
             elif blank_line.match(line):
-                self.text_buffer.append(line)
+                if len(self.base_buffer) > 0:
+                    self.base_buffer.append(line)
+                else:
+                    self.nested_buffer.append(line)
                 continue
             else:
                 if current_line_indent >= base_indent + 2:
                     stripped_text = line.replace(' ', '', base_indent)
-                    self.text_buffer.append(stripped_text)
+                    self.nested_buffer.append(stripped_text)
                     continue
                 else:
                     stripped_text = line.lstrip()
-                    self.text_buffer.append(stripped_text)
+                    self.base_buffer.append(stripped_text)
                     continue
         #最後にtext_bufferが残っていたら処理する。
-        if len(self.text_buffer) > 0:
-            instance = listItem(self.text_buffer)
+        if len(self.base_buffer) > 0:
+            instance = listItem(self.base_buffer)
+            print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
             instance.parse()
             self.parsed_data.append(instance)
-            self.text_buffer = []
+            self.base_buffer = []
+        if len(self.nested_buffer) > 0:
+            instance = listItem(self.nested_buffer)
+            print('listItem object created. rawdata is inherited: {0}'.format(self.nested_buffer))
+            instance.parse()
+            self.parsed_data.append(instance)
+            self.nested_buffer = []
         del self.rawdata
         return
 
