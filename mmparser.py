@@ -464,8 +464,14 @@ class blockObject:
                 return 'Blank'
 
     def expandToHTML(self):
-        #this method will be overrided at each subclasses.
-        raise NotImplementedError
+        expanded_text = ""
+        for element in self.parsed_data:
+            if isinstance(element, defined_classes):
+                expanded_text += element.expandToHTML()
+            else:
+                expanded_text += element
+        return self.start_tag + '\n' + expanded_text + '\n' + self.end_tag
+
 
     @staticmethod
     def countIndent(text):
@@ -500,11 +506,21 @@ class blockObject:
 class inlineObject:
     # this class will be inherited by inline objects.
     def expandToHTML(self):
-        #this method will be overrided at each subclasses.
-        raise NotImplementedError
+        expanded_text = ""
+        for element in self.parsed_data:
+            if isinstance(element, defined_classes):
+                expanded_text += element.expandToHTML()
+            else:
+                expanded_text += element
+        return self.start_tag + '\n' + expanded_text + '\n' + self.end_tag
 
 class root(blockObject):
-    pass
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = ''
+        self.end_tag = ''
+
         
 class table(blockObject):
     def __init__(self, listed_data):
@@ -514,6 +530,9 @@ class table(blockObject):
         self.contents = []
         self.reset()
         
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
 
     def parse(self):
         # 2行目の要素によって、|---|---|タイプか---|---タイプかを判別し、場合分けする。
@@ -595,11 +614,19 @@ class taggedBlock(blockObject):
         del self.rawdata
         return
 
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = ''
+        self.end_tag = ''
+
 class ulLists(blockObject):
     def reset(self):
         self.index = 0
         self.base_buffer = []
         self.nested_buffer = []
+        self.start_tag = '<ul>'
+        self.end_tag = '</ul>'
 
     def parse(self):
         base_indent = self.countIndent(self.rawdata[0])
@@ -667,6 +694,8 @@ class olLists(blockObject):
         self.index = 0
         self.base_buffer = []
         self.nested_buffer = []
+        self.start_tag = '<ol>'
+        self.end_tag = '</ol>'
 
     def parse(self):
         base_indent = self.countIndent(self.rawdata[0])
@@ -730,13 +759,29 @@ class olLists(blockObject):
         return
 
 class listItem(blockObject):
-    pass
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = '<li>'
+        self.end_tag = '</li>'
 
 class horizontalRule(blockObject):
     def __init__(self, listed_data):
-        pass
+        self.parsed_data = []
+    
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = '<hr>'
+        self.end_tag = ''
 
 class codeBlock(blockObject):
+def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = '<pre><code>'
+        self.end_tag = '</code></pre>'
+
     def parse(self):
         # 何もせずにparsed_dataへ格納
         for line in self.rawdata:
@@ -745,13 +790,18 @@ class codeBlock(blockObject):
         return
 
 class normalBlock(blockObject):
-    pass
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = ''
+        self.end_tag = ''
 
 class lineBreak(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        
+        self.start_tag = ''
+        self.end_tag = '</br>'
         
     def shapeData(self):
         del self.rawdata
@@ -836,7 +886,8 @@ class boldFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        
+        self.start_tag = '<b>'
+        self.end_tag = '</b>'
         
     def shapeData(self):
         rule = re.compile(r'(\*\*|\_\_)(?P<content>.*?)\1')
@@ -850,7 +901,8 @@ class emphasizedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        
+        self.start_tag = '<em>'
+        self.end_tag = '</em>'
         
     def shapeData(self):
         rule = re.compile(r'(\*|\_)(?P<content>.*?)\1')
@@ -864,7 +916,8 @@ class deletedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        
+        self.start_tag = '<strike>'
+        self.end_tag = '</strike>'
         
     def shapeData(self):
         rule = re.compile(r'(\~\~)(?P<content>.*?)\1')
@@ -878,7 +931,8 @@ class inlineCode(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        
+        self.start_tag = '<code>'
+        self.end_tag = '</code>'
         
     def shapeData(self):
         rule = re.compile(r'(`{1,})(?P<content>.*?)\1')
@@ -886,3 +940,25 @@ class inlineCode(inlineObject):
         self.parsed_data = shaped_text
         del self.rawdata
         return
+
+# このモジュール内で定義されたクラス群
+defined_classes = (
+    root,
+    table,
+    blockQuote,
+    headers,
+    taggedBlock,
+    codeBlock,
+    ulLists,
+    olLists,
+    listItem,
+    horizontalRule,
+    normalBlock,
+    lineBreak,
+    links,
+    images,
+    boldFont,
+    emphasizedFont,
+    deletedFont,
+    inlineCode,
+)
