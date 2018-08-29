@@ -159,6 +159,8 @@ class blockObject:
     def reset(self):
         self.index = 0
         self.text_buffer = []
+        self.start_tag = ''
+        self.end_tag = ''
 
     def parse(self):
         if len(self.rawdata) == 0:
@@ -505,6 +507,12 @@ class blockObject:
 
 class inlineObject:
     # this class will be inherited by inline objects.
+    def __init__(self, string):
+        self.rawdata = string
+        self.parsed_data = []
+        self.start_tag = ''
+        self.end_tag = ''
+
     def expandToHTML(self):
         expanded_text = ""
         for element in self.parsed_data:
@@ -574,9 +582,32 @@ class table(blockObject):
         del self.rawdata
         return
 
+    def expandToHTML(self):
+        expanded_text = ''
+        # ヘッダ要素の処理
+        for item in self.headers:
+            expanded_text += '<th>' + item + '</th>' + '\n'
+        expanded_text = '<tl>' + '\n' + expanded_text + '\n' + '</tl>' + '\n'
+        # 中身要素の処理
+        for row in self.contents:
+            expanded_text += '<tl>' + '\n'
+            index = 0
+            while index < len(row):
+                if self.alignments[index]:
+                    expanded_text += '<td align="{}">'.format(self.alignments[index]) + item + '</td>' + '\n'
+                else:
+                    expanded_text += '<td>' + item + '</td>' + '\n'
+                index += 1
+            expanded_text += '</tl>' + '\n'
+        return '<table>' + '\n' + expanded_text + '\n' + '</table>'
+
 
 class blockQuote(blockObject):
-    pass
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = '<blockquote>'
+        self.end_tag = '</blockquote>'
 
 class headers(blockObject):
     def __init__(self, data, level=None):
@@ -595,6 +626,11 @@ class headers(blockObject):
             self.parsed_data = self.rawdata.strip().strip('#').strip()
             del self.rawdata
         return
+
+    def expandToHTML(self):
+        expanded_text = ''
+        expanded_text += '<h{}>'.format(self.level) + self.parsed_data[0] + '</h{}>'.format(self.level)
+        return expanded_text
 
     @staticmethod
     def countSharp(text):
@@ -776,7 +812,7 @@ class horizontalRule(blockObject):
         self.end_tag = ''
 
 class codeBlock(blockObject):
-def reset(self):
+    def reset(self):
         self.index = 0
         self.text_buffer = []
         self.start_tag = '<pre><code>'
