@@ -165,9 +165,7 @@ class blockObject:
             return
 
         previous_line_type = 'Blank'
-        
         while self.index < len(self.rawdata):
-            
             if previous_line_type == 'Blank':
                 self.text_buffer = []
                 previous_line_type = self.parseFirstTime(self.rawdata[self.index])
@@ -244,44 +242,36 @@ class blockObject:
         
         #block要素のルールに合致するかを判断する。
         if tagged_line.match(text):
-            
             instance = taggedBlock([text])
             instance.parse()
             self.parsed_data.append(instance)
             return 'Blank'
         for rule in block_rules.keys():
             if block_rules[rule].match(text):
-                
                 self.text_buffer.append(text)
                 #次の行の処理のために、現在の行の種類を保存する
                 return rule
         if block_quote.match(text):
-            
             #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
             stripped_text = re.sub(r'\s*(\>\s|\>)', '', text, 1)
             self.text_buffer.append(stripped_text)
             return 'BlockQuote'
         if header_block.match(text):
-            
             instance = headers(text)
             instance.parse()
             self.parsed_data.append(instance)
             return 'Blank'
         if horizontal_rule.match(text):
-            
             self.parsed_data.append(horizontalRule([]))
             return 'Blank'
         if definition_block.match(text):
-            
             self.parseDefinitionBlock(text)
             return 'Blank'
         #block要素のいずれにも合致しなかった場合
         if not blank_line.match(text):
-            
             self.text_buffer.append(text)
             return 'Normal'
         else:
-            
             return 'Blank'
         
 
@@ -291,7 +281,6 @@ class blockObject:
         for dit in self.inline_reg:
             if dit['rule'].search(text):
                 element = dit['rule'].search(text).group()
-                
                 instance = dit['class'](element)
                 instance.shapeData()
                 #（elementsを整形する処理は個別のクラスで実装）
@@ -311,7 +300,6 @@ class blockObject:
         return [text]
 
     def parseNormalBlock(self, text):
-        
         #次の文が---等だった場合、前の要素がh1ヘッダになる
         if header_line_h1.match(text):
             instance = headers(self.text_buffer[0], level=1)
@@ -337,7 +325,6 @@ class blockObject:
             return 'Normal'
 
     def parseTableBlock(self, text):
-        
         if block_rules['Table'].match(text):
             self.text_buffer.append(text)
             return 'Table'
@@ -351,7 +338,6 @@ class blockObject:
             return -1
 
     def parseBlockQuote(self, text):
-        
         if block_quote.match(text):
             #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
             stripped_text = re.sub(r'\s*(\>\s|\>)', '', text, 1)
@@ -370,7 +356,6 @@ class blockObject:
             return 'BlockQuote'
 
     def parseTaggedBlock(self, text):
-        
         if block_rules['TaggedBlockEnd'].match(text):
             instance = taggedBlock(self.text_buffer)
             instance.parse()
@@ -381,10 +366,8 @@ class blockObject:
             return 'TaggedBlock'
 
     def parseCodeBlock(self, text):
-        
         #まず、parseFirstTime()で処理されていない、text_bufferの1要素目の先頭の空白を取り除く。
         self.text_buffer[0] = self.text_buffer[0].lstrip()
-
         if block_rules['CodeBlock'].match(text):
             stripped_text = text.lstrip()
             self.text_buffer.append(stripped_text)
@@ -401,7 +384,6 @@ class blockObject:
             return 'CodeBlock'
 
     def parseUlLists(self, text):
-        
         #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
@@ -415,7 +397,6 @@ class blockObject:
                 return 'ulLists'
             else:
                 instance = ulLists(self.text_buffer)
-                
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -426,7 +407,6 @@ class blockObject:
             return 'ulLists'
         elif self.index >= len(self.rawdata) - 1:
             instance = ulLists(self.text_buffer)
-            
             instance.parse()
             self.parsed_data.append(instance)
         else:
@@ -436,7 +416,6 @@ class blockObject:
                 return 'ulLists'
             else:
                 instance = ulLists(self.text_buffer)
-                
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -445,7 +424,6 @@ class blockObject:
             
 
     def parseOlLists(self, text):
-        
         #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
@@ -459,7 +437,6 @@ class blockObject:
                 return 'olLists'
             else:
                 instance = olLists(self.text_buffer)
-                
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -470,7 +447,6 @@ class blockObject:
             return 'olLists'
         elif self.index >= len(self.rawdata) - 1:
             instance = olLists(self.text_buffer)
-            
             instance.parse()
             self.parsed_data.append(instance)
         else:
@@ -481,7 +457,6 @@ class blockObject:
                 return 'olLists'
             else:
                 instance = olLists(self.text_buffer)
-                
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -494,7 +469,6 @@ class blockObject:
 
     @staticmethod
     def countIndent(text):
-        
         blank = re.compile(r'\s')
         count = 0
         while blank.match(text):
@@ -504,7 +478,6 @@ class blockObject:
 
     @staticmethod
     def parseDefinitionBlock(text):
-        
         rule_id = re.compile(r"(\[)(?P<id>[^\[]+)(\]:)")
         rule_option = re.compile(r'([\"\'\(])(?P<option>.*)\1')
         #urlは、元のtextからidとoptional titleを取り除くことによって取得する。
@@ -543,12 +516,10 @@ class table(blockObject):
         
 
     def parse(self):
-        
         # 2行目の要素によって、|---|---|タイプか---|---タイプかを判別し、場合分けする。
         formal = re.compile(r'\s*\|')
         informal = re.compile(r'\s*[^ \|]')
         if formal.match(self.rawdata[1]):
-            
             # [1,2,3,4,5][1:-1] = [2,3,4]
             self.headers = self.rawdata[self.index].split('|')[1:-1]
             self.index += 1
@@ -559,7 +530,6 @@ class table(blockObject):
                 self.index += 1
                 
         if informal.match(self.rawdata[1]):
-            
             self.headers = self.rawdata[self.index].split('|')
             self.index += 1
             self.alignments = self.rawdata[self.index].split('|')
@@ -639,7 +609,6 @@ class ulLists(blockObject):
                 if current_line_indent <= base_indent + 1:
                     if len(self.nested_buffer) > 0:
                         instance = listItem(self.nested_buffer)
-                        
                         instance.parse()
                         self.parsed_data.append(instance)
                         self.nested_buffer = []
@@ -649,7 +618,6 @@ class ulLists(blockObject):
                 else:
                     if len(self.base_buffer) > 0:
                         instance = listItem(self.base_buffer)
-                        
                         instance.parse()
                         self.parsed_data.append(instance)
                         self.base_buffer = []
@@ -659,7 +627,6 @@ class ulLists(blockObject):
             elif block_rules['olLists'].match(line):
                 if len(self.base_buffer) > 0:
                     instance = listItem(self.base_buffer)
-                    
                     instance.parse()
                     self.parsed_data.append(instance)
                     self.base_buffer = []
@@ -684,13 +651,11 @@ class ulLists(blockObject):
         #最後にtext_bufferが残っていたら処理する。
         if len(self.base_buffer) > 0:
             instance = listItem(self.base_buffer)
-            
             instance.parse()
             self.parsed_data.append(instance)
             self.base_buffer = []
         if len(self.nested_buffer) > 0:
             instance = listItem(self.nested_buffer)
-            
             instance.parse()
             self.parsed_data.append(instance)
             self.nested_buffer = []
@@ -711,7 +676,6 @@ class olLists(blockObject):
                 if current_line_indent <= base_indent + 1:
                     if len(self.nested_buffer) > 0:
                         instance = listItem(self.nested_buffer)
-                        
                         instance.parse()
                         self.parsed_data.append(instance)
                         self.nested_buffer = []
@@ -721,7 +685,6 @@ class olLists(blockObject):
                 else:
                     if len(self.base_buffer) > 0:
                         instance = listItem(self.base_buffer)
-                        
                         instance.parse()
                         self.parsed_data.append(instance)
                         self.base_buffer = []
@@ -731,7 +694,6 @@ class olLists(blockObject):
             elif block_rules['ulLists'].match(line):
                 if len(self.base_buffer) > 0:
                     instance = listItem(self.base_buffer)
-                    
                     instance.parse()
                     self.parsed_data.append(instance)
                     self.base_buffer = []
@@ -756,13 +718,11 @@ class olLists(blockObject):
         #最後にtext_bufferが残っていたら処理する。
         if len(self.base_buffer) > 0:
             instance = listItem(self.base_buffer)
-            
             instance.parse()
             self.parsed_data.append(instance)
             self.base_buffer = []
         if len(self.nested_buffer) > 0:
             instance = listItem(self.nested_buffer)
-            
             instance.parse()
             self.parsed_data.append(instance)
             self.nested_buffer = []
