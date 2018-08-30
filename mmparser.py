@@ -131,11 +131,13 @@ class MarkdownParser:
         self.rootobject.rawdata = splitted_data
         self.rootobject.parse()
     
-    def title_handler(self):
-        pass
-
-    def block_handler(self):
-        pass
+    def exportHTML(self, filename=None):
+        expanded_data = self.rootobject.expandToHTML()
+        if filename == None:
+            filename = 'export.html'
+        with open(filename, 'wt', encoding='utf-8') as f:
+            f.write(expanded_data)
+        
 
 #URLリンクのid情報を保存する辞書オブジェクト
 link_id_info = {}
@@ -155,7 +157,6 @@ class blockObject:
         ]
         self.reset()
         
-
     def reset(self):
         self.index = 0
         self.text_buffer = []
@@ -469,10 +470,10 @@ class blockObject:
         expanded_text = ""
         for element in self.parsed_data:
             if isinstance(element, defined_classes):
-                expanded_text += element.expandToHTML()
+                expanded_text += element.expandToHTML() + '\n'
             else:
-                expanded_text += element
-        return self.start_tag + '\n' + expanded_text + '\n' + self.end_tag
+                expanded_text += element + '\n'
+        return self.start_tag + '\n' + expanded_text + '\n' + self.end_tag + '\n'
 
 
     @staticmethod
@@ -587,10 +588,10 @@ class table(blockObject):
         # ヘッダ要素の処理
         for item in self.headers:
             expanded_text += '<th>' + item + '</th>' + '\n'
-        expanded_text = '<tl>' + '\n' + expanded_text + '\n' + '</tl>' + '\n'
+        expanded_text = '<tr>' + '\n' + expanded_text + '\n' + '</tr>' + '\n'
         # 中身要素の処理
         for row in self.contents:
-            expanded_text += '<tl>' + '\n'
+            expanded_text += '<tr>' + '\n'
             index = 0
             while index < len(row):
                 if self.alignments[index]:
@@ -598,7 +599,7 @@ class table(blockObject):
                 else:
                     expanded_text += '<td>' + item + '</td>' + '\n'
                 index += 1
-            expanded_text += '</tl>' + '\n'
+            expanded_text += '</tr>' + '\n'
         return '<table>' + '\n' + expanded_text + '\n' + '</table>'
 
 
@@ -629,7 +630,7 @@ class headers(blockObject):
 
     def expandToHTML(self):
         expanded_text = ''
-        expanded_text += '<h{}>'.format(self.level) + self.parsed_data[0] + '</h{}>'.format(self.level)
+        expanded_text += '<h{}>'.format(self.level) + self.parsed_data + '</h{}>'.format(self.level) + '\n'
         return expanded_text
 
     @staticmethod
@@ -804,6 +805,7 @@ class listItem(blockObject):
 class horizontalRule(blockObject):
     def __init__(self, listed_data):
         self.parsed_data = []
+        self.reset()
     
     def reset(self):
         self.index = 0
@@ -881,6 +883,16 @@ class links(inlineObject):
         del self.rawdata
         return
 
+    def expandToHTML(self):
+        expanded_text = ""
+        expanded_text += '<a'
+        if self.url:
+            expanded_text += ' href="{}"'.format(self.url)
+        elif self.id:
+            expanded_text += ' href="{}"'.format(link_id_info[self.id]['url'])
+        expanded_text += '>' + self.title + '</a>' + '\n'
+        return expanded_text
+
 class images(inlineObject):
     def __init__(self, string):
         self.rawdata = string
@@ -917,6 +929,20 @@ class images(inlineObject):
                 self.id = self.title
         del self.rawdata
         return
+
+    def expandToHTML(self):
+        expanded_text = ""
+        expanded_text += '<img'
+        if self.url:
+            expanded_text += ' src="{}"'.format(self.url)
+        elif self.id:
+            expanded_text += ' src="{}"'.format(link_id_info[self.id]['url'])
+            if link_id_info[self.id]['optional_title']:
+                expanded_text += ' alt="{}"'.format(link_id_info[self.id]['optional_title'])
+            else:
+                expanded_text += ' alt=""'
+        expanded_text += '>'
+        return expanded_text
 
 class boldFont(inlineObject):
     def __init__(self, string):

@@ -20,3 +20,11 @@
 * 自動リンク
 * バックスラッシュによる文字のエスケープ
 * メールアドレスの自動変換
+
+## 使い方
+cloneしたディレクトリをカレントディレクトリに指定し、pythonコンソールを開きます。
+
+    > import mmparser                              # モジュールを読み込みます
+    > parser = mmparser.MarkdownParser()           # インスタンスを生成します。
+    > parser.parseFile('path/to/markdownfile.md')  # ファイルを読み込み、構文解析を行います。
+    > parser.exportHTML('filename.html')           # 指定したファイル名でHTMLを書き出します。
