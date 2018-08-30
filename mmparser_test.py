@@ -112,6 +112,7 @@ class MarkdownParser:
         Only a file encoded with UTF-8 is appliable.
         """
         #ファイルを行ごとに分割してlist形式にする
+        print("reading file...")
         with open(filepath, 'rt', encoding='utf-8') as f:
             data = f.read()
             splitted_data = []
@@ -131,11 +132,14 @@ class MarkdownParser:
         self.rootobject.rawdata = splitted_data
         self.rootobject.parse()
     
-    def title_handler(self):
-        pass
-
-    def block_handler(self):
-        pass
+    def exportHTML(self, filename=None):
+        print("exporting...")
+        expanded_data = self.rootobject.expandToHTML()
+        if filename == None:
+            filename = 'export.html'
+        with open(filename, 'wt', encoding='utf-8') as f:
+            f.write(expanded_data)
+        
 
 #URLリンクのid情報を保存する辞書オブジェクト
 link_id_info = {}
@@ -154,20 +158,20 @@ class blockObject:
             {'rule':inline_rules['Links']          , 'class':links          },
         ]
         self.reset()
-        print("Constructing an object: {0}".format(self.__class__.__name__))
-
+        
     def reset(self):
         self.index = 0
         self.text_buffer = []
+        self.start_tag = ''
+        self.end_tag = ''
 
     def parse(self):
         if len(self.rawdata) == 0:
             return
 
         previous_line_type = 'Blank'
-        
         while self.index < len(self.rawdata):
-            print("current index: {0}, previous_line_type: {1}".format(self.index, previous_line_type))
+            print("parsing line: {0}, previous line type: {1}".format(self.index, previous_line_type))
             if previous_line_type == 'Blank':
                 self.text_buffer = []
                 previous_line_type = self.parseFirstTime(self.rawdata[self.index])
@@ -215,7 +219,7 @@ class blockObject:
                 self.index += 1
                 continue
 
-            print("passed. PRT: {0}, index: {1}".format(previous_line_type, self.index))
+            
         # text_bufferに残ってる場合の処理
         if len(self.text_buffer) > 0:
             if previous_line_type == 'Normal':
@@ -241,57 +245,51 @@ class blockObject:
     #####################################################
 
     def parseFirstTime(self, text):
-        print("function is called: {0}, argument: {1}".format('parseFirstTime', text))
+        
         #block要素のルールに合致するかを判断する。
         if tagged_line.match(text):
-            print("rule {0} matched".format('tagged_line'))
+            print("creating an object : {}".format("Tagged block"))
             instance = taggedBlock([text])
             instance.parse()
             self.parsed_data.append(instance)
             return 'Blank'
         for rule in block_rules.keys():
             if block_rules[rule].match(text):
-                print("rule {0} matched".format(rule))
                 self.text_buffer.append(text)
                 #次の行の処理のために、現在の行の種類を保存する
                 return rule
         if block_quote.match(text):
-            print("rule {0} matched".format('block_quote'))
             #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
             stripped_text = re.sub(r'\s*(\>\s|\>)', '', text, 1)
             self.text_buffer.append(stripped_text)
             return 'BlockQuote'
         if header_block.match(text):
-            print("rule {0} matched".format('header_block'))
+            print("creating an object : {}".format("header"))
             instance = headers(text)
             instance.parse()
             self.parsed_data.append(instance)
             return 'Blank'
         if horizontal_rule.match(text):
-            print("rule {0} matched".format('horizontal_rule'))
             self.parsed_data.append(horizontalRule([]))
             return 'Blank'
         if definition_block.match(text):
-            print("rule {0} matched".format('definitionblock'))
             self.parseDefinitionBlock(text)
             return 'Blank'
         #block要素のいずれにも合致しなかった場合
         if not blank_line.match(text):
-            print("rule {0} matched".format('other'))
             self.text_buffer.append(text)
             return 'Normal'
         else:
-            print("rule {0} matched".format('blank'))
             return 'Blank'
-        print("didn't match any rules")
+        
 
     def parseInlineElements(self, text):
-        print("function is called: {0}".format('parseInlineElements'))
+        
         parsed_text = []
         for dit in self.inline_reg:
             if dit['rule'].search(text):
                 element = dit['rule'].search(text).group()
-                print("Inline rule {0} is matched. element: {1}".format(dit['class'], element))
+                print("creating an object : {}".format("Inline object"))
                 instance = dit['class'](element)
                 instance.shapeData()
                 #（elementsを整形する処理は個別のクラスで実装）
@@ -311,15 +309,16 @@ class blockObject:
         return [text]
 
     def parseNormalBlock(self, text):
-        print("function is called: {0}".format('parseNormalBlock'))
         #次の文が---等だった場合、前の要素がh1ヘッダになる
         if header_line_h1.match(text):
+            print("creating an object : {}".format("header"))
             instance = headers(self.text_buffer[0], level=1)
             instance.parse()
             self.parsed_data.append(instance)
             #次の文の処理は振り出しに戻したいので'Blank'を返す
             return 'Blank'
         if header_line_h2.match(text):
+            print("creating an object : {}".format("header"))
             instance = headers(self.text_buffer[0], level=2)
             instance.parse()
             self.parsed_data.append(instance)
@@ -337,12 +336,12 @@ class blockObject:
             return 'Normal'
 
     def parseTableBlock(self, text):
-        print("function is called: {0}".format('parseTableBlock'))
         if block_rules['Table'].match(text):
             self.text_buffer.append(text)
             return 'Table'
         elif blank_line.match(text) or self.index >= len(self.rawdata) - 1:
             self.text_buffer.append(text)
+            print("creating an object : {}".format("table"))
             instance = table(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -351,7 +350,6 @@ class blockObject:
             return -1
 
     def parseBlockQuote(self, text):
-        print("function is called: {0}".format('parseBlockQuote'))
         if block_quote.match(text):
             #一番左の'>'を空白と置き換え、さらに左端の空白を切り詰める。
             stripped_text = re.sub(r'\s*(\>\s|\>)', '', text, 1)
@@ -361,6 +359,7 @@ class blockObject:
             #空行でブロックの終わりを検知する
             stripped_text = text.replace('>', '', 1)
             self.text_buffer.append(stripped_text)
+            print("creating an object : {}".format("block quote"))
             instance = blockQuote(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -370,8 +369,8 @@ class blockObject:
             return 'BlockQuote'
 
     def parseTaggedBlock(self, text):
-        print("function is called: {0}".format('parseTaggedBlock'))
         if block_rules['TaggedBlockEnd'].match(text):
+            print("creating an object : {}".format("tagged block"))
             instance = taggedBlock(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -381,10 +380,8 @@ class blockObject:
             return 'TaggedBlock'
 
     def parseCodeBlock(self, text):
-        print("function is called: {0}, argument: {1}".format('parseCodeBlock', text))
         #まず、parseFirstTime()で処理されていない、text_bufferの1要素目の先頭の空白を取り除く。
         self.text_buffer[0] = self.text_buffer[0].lstrip()
-
         if block_rules['CodeBlock'].match(text):
             stripped_text = text.lstrip()
             self.text_buffer.append(stripped_text)
@@ -392,6 +389,7 @@ class blockObject:
         elif blank_line.match(text) or self.index >= len(self.rawdata) - 1:
             stripped_text = text.lstrip()
             self.text_buffer.append(stripped_text)
+            print("creating an object : {}".format("code block"))
             instance = codeBlock(self.text_buffer)
             instance.parse()
             self.parsed_data.append(instance)
@@ -401,7 +399,6 @@ class blockObject:
             return 'CodeBlock'
 
     def parseUlLists(self, text):
-        print("function is called: {0}, argument: {1}".format('parseUlLists', text))
         #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
@@ -414,8 +411,8 @@ class blockObject:
                 self.text_buffer.append(text)
                 return 'ulLists'
             else:
+                print("creating an object : {}".format("ul lists"))
                 instance = ulLists(self.text_buffer)
-                print('ulLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -425,8 +422,8 @@ class blockObject:
             self.text_buffer.append(text)
             return 'ulLists'
         elif self.index >= len(self.rawdata) - 1:
+            print("creating an object : {}".format("ul lists"))
             instance = ulLists(self.text_buffer)
-            print('ulLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
             instance.parse()
             self.parsed_data.append(instance)
         else:
@@ -435,8 +432,8 @@ class blockObject:
                 self.text_buffer.append(text)
                 return 'ulLists'
             else:
+                print("creating an object : {}".format("ul lists"))
                 instance = ulLists(self.text_buffer)
-                print('ulLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -445,7 +442,6 @@ class blockObject:
             
 
     def parseOlLists(self, text):
-        print("function is called: {0}, argument: {1}".format('parseOlLists', text))
         #現在のリストの基準となるインデントを元に、各行が入れ子なのか否かを判断する。
         base_indent = self.countIndent(self.text_buffer[0])
         current_line_indent = self.countIndent(text)
@@ -458,8 +454,8 @@ class blockObject:
                 self.text_buffer.append(text)
                 return 'olLists'
             else:
+                print("creating an object : {}".format("ol lists"))
                 instance = olLists(self.text_buffer)
-                print('olLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -469,8 +465,8 @@ class blockObject:
             self.text_buffer.append(text)
             return 'olLists'
         elif self.index >= len(self.rawdata) - 1:
+            print("creating an object : {}".format("ol lists"))
             instance = olLists(self.text_buffer)
-            print('olLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
             instance.parse()
             self.parsed_data.append(instance)
         else:
@@ -480,8 +476,8 @@ class blockObject:
                 self.text_buffer.append(text)
                 return 'olLists'
             else:
+                print("creating an object : {}".format("ol lists"))
                 instance = olLists(self.text_buffer)
-                print('olLists object created. rawdata is inherited: {0}'.format(self.text_buffer))
                 instance.parse()
                 self.parsed_data.append(instance)
                 #現在の行を処理し直す
@@ -489,12 +485,17 @@ class blockObject:
                 return 'Blank'
 
     def expandToHTML(self):
-        #this method will be overrided at each subclasses.
-        raise NotImplementedError
+        expanded_text = ""
+        for element in self.parsed_data:
+            if isinstance(element, defined_classes):
+                expanded_text += element.expandToHTML() + '\n'
+            else:
+                expanded_text += element + '\n'
+        return self.start_tag + '\n' + expanded_text + '\n' + self.end_tag + '\n'
+
 
     @staticmethod
     def countIndent(text):
-        print("function is called: {0}, argument: {1}".format('countIndent', text))
         blank = re.compile(r'\s')
         count = 0
         while blank.match(text):
@@ -504,7 +505,6 @@ class blockObject:
 
     @staticmethod
     def parseDefinitionBlock(text):
-        print("function is called: {0}".format('parseDefinitionBlock'))
         rule_id = re.compile(r"(\[)(?P<id>[^\[]+)(\]:)")
         rule_option = re.compile(r'([\"\'\(])(?P<option>.*)\1')
         #urlは、元のtextからidとoptional titleを取り除くことによって取得する。
@@ -526,12 +526,28 @@ class blockObject:
 
 class inlineObject:
     # this class will be inherited by inline objects.
+    def __init__(self, string):
+        self.rawdata = string
+        self.parsed_data = []
+        self.start_tag = ''
+        self.end_tag = ''
+
     def expandToHTML(self):
-        #this method will be overrided at each subclasses.
-        raise NotImplementedError
+        expanded_text = ""
+        for element in self.parsed_data:
+            if isinstance(element, defined_classes):
+                expanded_text += element.expandToHTML()
+            else:
+                expanded_text += element
+        return self.start_tag + '\n' + expanded_text + '\n' + self.end_tag
 
 class root(blockObject):
-    pass
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = ""
+        self.end_tag = ''
+
         
 class table(blockObject):
     def __init__(self, listed_data):
@@ -540,15 +556,16 @@ class table(blockObject):
         self.alignments = []
         self.contents = []
         self.reset()
-        print('constructing table class ...')
+        
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
 
     def parse(self):
-        print('run parse method in table')
         # 2行目の要素によって、|---|---|タイプか---|---タイプかを判別し、場合分けする。
         formal = re.compile(r'\s*\|')
         informal = re.compile(r'\s*[^ \|]')
         if formal.match(self.rawdata[1]):
-            print('type: formal')
             # [1,2,3,4,5][1:-1] = [2,3,4]
             self.headers = self.rawdata[self.index].split('|')[1:-1]
             self.index += 1
@@ -557,9 +574,8 @@ class table(blockObject):
             while self.index < len(self.rawdata):
                 self.contents.append(self.rawdata[self.index].split('|')[1:-1])
                 self.index += 1
-                print('now in loop')
+                
         if informal.match(self.rawdata[1]):
-            print('type: informal')
             self.headers = self.rawdata[self.index].split('|')
             self.index += 1
             self.alignments = self.rawdata[self.index].split('|')
@@ -585,9 +601,32 @@ class table(blockObject):
         del self.rawdata
         return
 
+    def expandToHTML(self):
+        expanded_text = ''
+        # ヘッダ要素の処理
+        for item in self.headers:
+            expanded_text += '<th>' + item + '</th>' + '\n'
+        expanded_text = '<tr>' + '\n' + expanded_text + '\n' + '</tr>' + '\n'
+        # 中身要素の処理
+        for row in self.contents:
+            expanded_text += '<tr>' + '\n'
+            index = 0
+            while index < len(row):
+                if self.alignments[index]:
+                    expanded_text += '<td align="{}">'.format(self.alignments[index]) + item + '</td>' + '\n'
+                else:
+                    expanded_text += '<td>' + item + '</td>' + '\n'
+                index += 1
+            expanded_text += '</tr>' + '\n'
+        return '<table>' + '\n' + expanded_text + '\n' + '</table>'
+
 
 class blockQuote(blockObject):
-    pass
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = '<blockquote>'
+        self.end_tag = '</blockquote>'
 
 class headers(blockObject):
     def __init__(self, data, level=None):
@@ -607,6 +646,11 @@ class headers(blockObject):
             del self.rawdata
         return
 
+    def expandToHTML(self):
+        expanded_text = ''
+        expanded_text += '<h{}>'.format(self.level) + self.parsed_data + '</h{}>'.format(self.level) + '\n'
+        return expanded_text
+
     @staticmethod
     def countSharp(text):
         text = text.lstrip()
@@ -625,11 +669,19 @@ class taggedBlock(blockObject):
         del self.rawdata
         return
 
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = ''
+        self.end_tag = ''
+
 class ulLists(blockObject):
     def reset(self):
         self.index = 0
         self.base_buffer = []
         self.nested_buffer = []
+        self.start_tag = '<ul>'
+        self.end_tag = '</ul>'
 
     def parse(self):
         base_indent = self.countIndent(self.rawdata[0])
@@ -638,8 +690,8 @@ class ulLists(blockObject):
             if block_rules['ulLists'].match(line):
                 if current_line_indent <= base_indent + 1:
                     if len(self.nested_buffer) > 0:
+                        print("creating an object : {}".format("list item"))
                         instance = listItem(self.nested_buffer)
-                        print('listItem object created. rawdata is inherited: {0}'.format(self.nested_buffer))
                         instance.parse()
                         self.parsed_data.append(instance)
                         self.nested_buffer = []
@@ -648,8 +700,8 @@ class ulLists(blockObject):
                     continue
                 else:
                     if len(self.base_buffer) > 0:
+                        print("creating an object : {}".format("list item"))
                         instance = listItem(self.base_buffer)
-                        print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
                         instance.parse()
                         self.parsed_data.append(instance)
                         self.base_buffer = []
@@ -658,8 +710,8 @@ class ulLists(blockObject):
                     continue
             elif block_rules['olLists'].match(line):
                 if len(self.base_buffer) > 0:
+                    print("creating an object : {}".format("list item"))
                     instance = listItem(self.base_buffer)
-                    print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
                     instance.parse()
                     self.parsed_data.append(instance)
                     self.base_buffer = []
@@ -683,14 +735,14 @@ class ulLists(blockObject):
                     continue
         #最後にtext_bufferが残っていたら処理する。
         if len(self.base_buffer) > 0:
+            print("creating an object : {}".format("list item"))
             instance = listItem(self.base_buffer)
-            print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
             instance.parse()
             self.parsed_data.append(instance)
             self.base_buffer = []
         if len(self.nested_buffer) > 0:
+            print("creating an object : {}".format("list item"))
             instance = listItem(self.nested_buffer)
-            print('listItem object created. rawdata is inherited: {0}'.format(self.nested_buffer))
             instance.parse()
             self.parsed_data.append(instance)
             self.nested_buffer = []
@@ -702,6 +754,8 @@ class olLists(blockObject):
         self.index = 0
         self.base_buffer = []
         self.nested_buffer = []
+        self.start_tag = '<ol>'
+        self.end_tag = '</ol>'
 
     def parse(self):
         base_indent = self.countIndent(self.rawdata[0])
@@ -710,8 +764,8 @@ class olLists(blockObject):
             if block_rules['olLists'].match(line):
                 if current_line_indent <= base_indent + 1:
                     if len(self.nested_buffer) > 0:
+                        print("creating an object : {}".format("list item"))
                         instance = listItem(self.nested_buffer)
-                        print('listItem object created. rawdata is inherited: {0}'.format(self.nested_buffer))
                         instance.parse()
                         self.parsed_data.append(instance)
                         self.nested_buffer = []
@@ -720,8 +774,8 @@ class olLists(blockObject):
                     continue
                 else:
                     if len(self.base_buffer) > 0:
+                        print("creating an object : {}".format("list_item"))
                         instance = listItem(self.base_buffer)
-                        print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
                         instance.parse()
                         self.parsed_data.append(instance)
                         self.base_buffer = []
@@ -730,8 +784,8 @@ class olLists(blockObject):
                     continue
             elif block_rules['ulLists'].match(line):
                 if len(self.base_buffer) > 0:
+                    print("creating an object : {}".format("list item"))
                     instance = listItem(self.base_buffer)
-                    print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
                     instance.parse()
                     self.parsed_data.append(instance)
                     self.base_buffer = []
@@ -755,14 +809,14 @@ class olLists(blockObject):
                     continue
         #最後にtext_bufferが残っていたら処理する。
         if len(self.base_buffer) > 0:
+            print("creating an object : {}".format("list item"))
             instance = listItem(self.base_buffer)
-            print('listItem object created. rawdata is inherited: {0}'.format(self.base_buffer))
             instance.parse()
             self.parsed_data.append(instance)
             self.base_buffer = []
         if len(self.nested_buffer) > 0:
+            print("creating an object : {}".format("list item"))
             instance = listItem(self.nested_buffer)
-            print('listItem object created. rawdata is inherited: {0}'.format(self.nested_buffer))
             instance.parse()
             self.parsed_data.append(instance)
             self.nested_buffer = []
@@ -770,13 +824,30 @@ class olLists(blockObject):
         return
 
 class listItem(blockObject):
-    pass
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = '<li>'
+        self.end_tag = '</li>'
 
 class horizontalRule(blockObject):
     def __init__(self, listed_data):
-        pass
+        self.parsed_data = []
+        self.reset()
+    
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = '<hr>'
+        self.end_tag = ''
 
 class codeBlock(blockObject):
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = '<pre><code>'
+        self.end_tag = '</code></pre>'
+
     def parse(self):
         # 何もせずにparsed_dataへ格納
         for line in self.rawdata:
@@ -785,13 +856,18 @@ class codeBlock(blockObject):
         return
 
 class normalBlock(blockObject):
-    pass
+    def reset(self):
+        self.index = 0
+        self.text_buffer = []
+        self.start_tag = ''
+        self.end_tag = ''
 
 class lineBreak(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        print("Constructing an object: {0}".format(self.__class__.__name__))
+        self.start_tag = ''
+        self.end_tag = '</br>'
         
     def shapeData(self):
         del self.rawdata
@@ -804,7 +880,7 @@ class links(inlineObject):
         self.title = ""
         self.url = None
         self.id = None
-        print("Constructing an object: {0}".format(self.__class__.__name__))
+        
 
     def shapeData(self):
         rule_url = re.compile(r'''
@@ -834,6 +910,16 @@ class links(inlineObject):
                 self.id = self.title
         del self.rawdata
         return
+
+    def expandToHTML(self):
+        expanded_text = ""
+        expanded_text += '<a'
+        if self.url:
+            expanded_text += ' href="{}"'.format(self.url)
+        elif self.id:
+            expanded_text += ' href="{}"'.format(link_id_info[self.id]['url'])
+        expanded_text += '>' + self.title + '</a>' + '\n'
+        return expanded_text
 
 class images(inlineObject):
     def __init__(self, string):
@@ -841,7 +927,7 @@ class images(inlineObject):
         self.title = ""
         self.url = None
         self.id = None
-        print("Constructing an object: {0}".format(self.__class__.__name__))
+        
 
     def shapeData(self):
         rule_url = re.compile(r'''
@@ -872,11 +958,26 @@ class images(inlineObject):
         del self.rawdata
         return
 
+    def expandToHTML(self):
+        expanded_text = ""
+        expanded_text += '<img'
+        if self.url:
+            expanded_text += ' src="{}"'.format(self.url)
+        elif self.id:
+            expanded_text += ' src="{}"'.format(link_id_info[self.id]['url'])
+            if link_id_info[self.id]['optional_title']:
+                expanded_text += ' alt="{}"'.format(link_id_info[self.id]['optional_title'])
+            else:
+                expanded_text += ' alt=""'
+        expanded_text += '>'
+        return expanded_text
+
 class boldFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        print("Constructing an object: {0}".format(self.__class__.__name__))
+        self.start_tag = '<b>'
+        self.end_tag = '</b>'
         
     def shapeData(self):
         rule = re.compile(r'(\*\*|\_\_)(?P<content>.*?)\1')
@@ -890,7 +991,8 @@ class emphasizedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        print("Constructing an object: {0}".format(self.__class__.__name__))
+        self.start_tag = '<em>'
+        self.end_tag = '</em>'
         
     def shapeData(self):
         rule = re.compile(r'(\*|\_)(?P<content>.*?)\1')
@@ -904,7 +1006,8 @@ class deletedFont(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        print("Constructing an object: {0}".format(self.__class__.__name__))
+        self.start_tag = '<strike>'
+        self.end_tag = '</strike>'
         
     def shapeData(self):
         rule = re.compile(r'(\~\~)(?P<content>.*?)\1')
@@ -918,7 +1021,8 @@ class inlineCode(inlineObject):
     def __init__(self, string):
         self.rawdata = string
         self.parsed_data = []
-        print("Constructing an object: {0}".format(self.__class__.__name__))
+        self.start_tag = '<code>'
+        self.end_tag = '</code>'
         
     def shapeData(self):
         rule = re.compile(r'(`{1,})(?P<content>.*?)\1')
@@ -926,3 +1030,25 @@ class inlineCode(inlineObject):
         self.parsed_data = shaped_text
         del self.rawdata
         return
+
+# このモジュール内で定義されたクラス群
+defined_classes = (
+    root,
+    table,
+    blockQuote,
+    headers,
+    taggedBlock,
+    codeBlock,
+    ulLists,
+    olLists,
+    listItem,
+    horizontalRule,
+    normalBlock,
+    lineBreak,
+    links,
+    images,
+    boldFont,
+    emphasizedFont,
+    deletedFont,
+    inlineCode,
+)
