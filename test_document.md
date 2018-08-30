@@ -198,6 +198,7 @@ converted into:
   TD  |  TD  
 
 alignment
+
  left | center | right
 :---- |:------:| -----:
   L   |   C    |   R

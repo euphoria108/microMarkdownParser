@@ -527,7 +527,7 @@ class root(blockObject):
     def reset(self):
         self.index = 0
         self.text_buffer = []
-        self.start_tag = ''
+        self.start_tag = ""
         self.end_tag = ''
 
         
