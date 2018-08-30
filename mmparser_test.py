@@ -135,6 +135,7 @@ class MarkdownParser:
     def exportHTML(self, filename=None):
         print("exporting...")
         expanded_data = self.rootobject.expandToHTML()
+        print(expanded_data)
         if filename == None:
             filename = 'export.html'
         with open(filename, 'wt', encoding='utf-8') as f:
